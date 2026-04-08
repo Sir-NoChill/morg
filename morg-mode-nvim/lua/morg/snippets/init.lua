@@ -25,9 +25,12 @@ function M.setup()
         s("scheduled", fmt("#scheduled {}", { f(date_now) })),
         s("date", fmt("#date {}", { f(date_now) })),
         s("event", fmt("#event {} {}", { f(date_now), i(1, "event description") })),
-        s("priority", fmt("#priority {}", {
-            c(1, { t("A"), t("B"), t("C") }),
-        })),
+        s(
+            "priority",
+            fmt("#priority {}", {
+                c(1, { t("A"), t("B"), t("C") }),
+            })
+        ),
         s("effort", fmt("#effort {}", { i(1, "1h") })),
         s("archive", t("#archive")),
         s("progress", t("#progress")),
@@ -38,61 +41,115 @@ function M.setup()
         s("clock", fmt("#clock {}", { i(1, "1h30m") })),
 
         -- Property drawer
-        s("props", fmt([[
+        s(
+            "props",
+            fmt(
+                [[
 #properties
 id = {}
 {}
-#end]], { i(1, ""), i(2) })),
+#end]],
+                { i(1, ""), i(2) }
+            )
+        ),
 
         -- Code blocks with tangle
-        s("tangle", fmt([[
+        s(
+            "tangle",
+            fmt(
+                [[
 ```{} #tangle file={}
 {}
-```]], { i(1, "rust"), i(2, "output.rs"), i(3, "") })),
+```]],
+                { i(1, "rust"), i(2, "output.rs"), i(3, "") }
+            )
+        ),
 
         -- Named code block
-        s("named", fmt([[
+        s(
+            "named",
+            fmt(
+                [[
 ```{} name={}
 {}
-```]], { i(1, "rust"), i(2, "block-name"), i(3, "") })),
+```]],
+                { i(1, "rust"), i(2, "block-name"), i(3, "") }
+            )
+        ),
 
         -- Noweb reference
         s("noweb", fmt("<<{}>>", { i(1, "block-name") })),
 
         -- Callout
-        s("note", fmt([[
+        s(
+            "note",
+            fmt(
+                [[
 > [!note]
-> {}]], { i(1, "content") })),
+> {}]],
+                { i(1, "content") }
+            )
+        ),
 
-        s("warn", fmt([[
+        s(
+            "warn",
+            fmt(
+                [[
 > [!warning]
-> {}]], { i(1, "content") })),
+> {}]],
+                { i(1, "content") }
+            )
+        ),
 
-        s("tip", fmt([[
+        s(
+            "tip",
+            fmt(
+                [[
 > [!tip]
-> {}]], { i(1, "content") })),
+> {}]],
+                { i(1, "content") }
+            )
+        ),
 
         -- Callout with metadata
-        s("cnote", fmt([[
+        s(
+            "cnote",
+            fmt(
+                [[
 > [!{}][{}]
-> {}]], { i(1, "note"), i(2, "#tangle file=out.txt"), i(3, "content") })),
+> {}]],
+                { i(1, "note"), i(2, "#tangle file=out.txt"), i(3, "content") }
+            )
+        ),
 
         -- Frontmatter
-        s("fm", fmt([[
+        s(
+            "fm",
+            fmt(
+                [[
 ---
 title: {}
 tags: [{}]
 ---
-]], { i(1, "Title"), i(2, "") })),
+]],
+                { i(1, "Title"), i(2, "") }
+            )
+        ),
 
         -- Frontmatter with todo sequences
-        s("fmtodo", fmt([[
+        s(
+            "fmtodo",
+            fmt(
+                [[
 ---
 title: {}
 todo_sequences:
   - [TODO, NEXT, WAIT, "|", DONE, CANCELLED]
 ---
-]], { i(1, "Title") })),
+]],
+                { i(1, "Title") }
+            )
+        ),
 
         -- Checkbox items
         s("cb", fmt("- [ ] {}", { i(1, "task") })),
@@ -109,19 +166,31 @@ todo_sequences:
         s("fndef", fmt("[^{}]: {}", { i(1, "1"), i(2, "footnote text") })),
 
         -- Heading with properties
-        s("hprops", fmt([[
+        s(
+            "hprops",
+            fmt(
+                [[
 ## {}
 
 #properties
 id = {}
 effort = {}
 #end
-]], { i(1, "Heading"), i(2, ""), i(3, "1h") })),
+]],
+                { i(1, "Heading"), i(2, ""), i(3, "1h") }
+            )
+        ),
 
         -- Clock pair
-        s("clockpair", fmt([[
+        s(
+            "clockpair",
+            fmt(
+                [[
 #clock-in {}
-#clock-out {}]], { f(datetime_now), i(1, "") })),
+#clock-out {}]],
+                { f(datetime_now), i(1, "") }
+            )
+        ),
     }
 
     ls.add_snippets("markdown", morg_snippets)

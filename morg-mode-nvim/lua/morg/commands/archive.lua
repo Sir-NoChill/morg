@@ -15,7 +15,7 @@ function M.run(dry_run)
             end
             vim.notify(vim.trim(stdout), vim.log.levels.INFO)
             if not dry_run then
-                vim.cmd("edit!")  -- reload file
+                vim.cmd("edit!") -- reload file
             end
         end)
     end)

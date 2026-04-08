@@ -32,7 +32,7 @@ function M.run(query)
             end
 
             if #items == 0 then
-                vim.notify("No matches for \"" .. query .. "\"", vim.log.levels.INFO)
+                vim.notify('No matches for "' .. query .. '"', vim.log.levels.INFO)
                 return
             end
 
