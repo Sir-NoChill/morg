@@ -14,7 +14,8 @@ pub fn run(
     let mut html = String::new();
 
     if standalone {
-        let title = parsed.first()
+        let title = parsed
+            .first()
             .and_then(|pf| pf.document.frontmatter.as_ref())
             .and_then(|fm| fm.data.get("title"))
             .and_then(|v| v.as_str())
@@ -84,18 +85,29 @@ fn render_block(block: &Block, out: &mut String, footnotes: &mut Vec<(String, St
             out.push_str("</p>\n");
         }
         Block::CodeBlock(cb) => {
-            let lang_attr = cb.lang.as_deref()
+            let lang_attr = cb
+                .lang
+                .as_deref()
                 .map(|l| format!(" class=\"language-{l}\""))
                 .unwrap_or_default();
-            out.push_str(&format!("<pre><code{lang_attr}>{}</code></pre>\n", escape_html(&cb.body)));
+            out.push_str(&format!(
+                "<pre><code{lang_attr}>{}</code></pre>\n",
+                escape_html(&cb.body)
+            ));
         }
         Block::BlankLine(_) => {}
         Block::BlockTag(tag) => {
             render_block_tag(tag, out);
         }
         Block::Callout(c) => {
-            out.push_str(&format!("<blockquote class=\"callout callout-{}\">\n", c.kind));
-            out.push_str(&format!("<p class=\"callout-title\">{}</p>\n", capitalize(&c.kind)));
+            out.push_str(&format!(
+                "<blockquote class=\"callout callout-{}\">\n",
+                c.kind
+            ));
+            out.push_str(&format!(
+                "<p class=\"callout-title\">{}</p>\n",
+                capitalize(&c.kind)
+            ));
             render_blocks(&c.content, out, footnotes);
             out.push_str("</blockquote>\n");
         }
@@ -201,7 +213,9 @@ fn render_inline_segment(seg: &InlineSegment, out: &mut String) {
             out.push_str(&format!("<code>{}</code>", escape_html(c)));
         }
         InlineSegment::Link(link) => {
-            let title_attr = link.title.as_deref()
+            let title_attr = link
+                .title
+                .as_deref()
                 .map(|t| format!(" title=\"{}\"", escape_html(t)))
                 .unwrap_or_default();
             out.push_str(&format!(
@@ -234,13 +248,20 @@ fn render_inline_tag(tag: &morg_parser::tags::Tag, out: &mut String) {
             }
         }
         TagKind::Deadline { date, .. } => {
-            out.push_str(&format!("<span class=\"tag tag-deadline\">DEADLINE: {date}</span>"));
+            out.push_str(&format!(
+                "<span class=\"tag tag-deadline\">DEADLINE: {date}</span>"
+            ));
         }
         TagKind::Scheduled { date, .. } => {
-            out.push_str(&format!("<span class=\"tag tag-scheduled\">SCHEDULED: {date}</span>"));
+            out.push_str(&format!(
+                "<span class=\"tag tag-scheduled\">SCHEDULED: {date}</span>"
+            ));
         }
         TagKind::Priority { level } => {
-            out.push_str(&format!("<span class=\"tag tag-priority tag-priority-{}\">#{level}</span>", level.to_string().to_lowercase()));
+            out.push_str(&format!(
+                "<span class=\"tag tag-priority tag-priority-{}\">#{level}</span>",
+                level.to_string().to_lowercase()
+            ));
         }
         TagKind::Archive => {
             out.push_str("<span class=\"tag tag-archive\">ARCHIVE</span>");
@@ -267,10 +288,14 @@ fn render_block_tag(tag: &morg_parser::tags::Tag, out: &mut String) {
             out.push_str("</p>\n");
         }
         TagKind::Deadline { date, .. } => {
-            out.push_str(&format!("<p class=\"planning\"><strong>DEADLINE:</strong> {date}</p>\n"));
+            out.push_str(&format!(
+                "<p class=\"planning\"><strong>DEADLINE:</strong> {date}</p>\n"
+            ));
         }
         TagKind::Scheduled { date, .. } => {
-            out.push_str(&format!("<p class=\"planning\"><strong>SCHEDULED:</strong> {date}</p>\n"));
+            out.push_str(&format!(
+                "<p class=\"planning\"><strong>SCHEDULED:</strong> {date}</p>\n"
+            ));
         }
         _ => {}
     }

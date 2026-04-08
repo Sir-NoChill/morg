@@ -117,15 +117,15 @@ fn get_note_date(path: &Path) -> Option<String> {
             in_frontmatter = true;
             continue;
         }
-        if in_frontmatter
-            && let Some(rest) = line.strip_prefix("date:") {
-                return Some(rest.trim().to_string());
-            }
+        if in_frontmatter && let Some(rest) = line.strip_prefix("date:") {
+            return Some(rest.trim().to_string());
+        }
     }
     None
 }
 
 /// Archive the old note, create a fresh one from template, carry todos.
+#[allow(clippy::too_many_arguments)]
 fn rotate_note(
     today_path: &Path,
     template_path: &Path,
@@ -174,12 +174,17 @@ fn rotate_note(
         } else {
             // If no placeholder block, append after ## TODOs
             if let Some(pos) = note.find("## TODOs")
-                && let Some(newline_pos) = note[pos..].find('\n') {
-                    let insert_at = pos + newline_pos + 1;
-                    // Skip blank line after heading
-                    let skip = if note[insert_at..].starts_with('\n') { 1 } else { 0 };
-                    note.insert_str(insert_at + skip, &carried);
-                }
+                && let Some(newline_pos) = note[pos..].find('\n')
+            {
+                let insert_at = pos + newline_pos + 1;
+                // Skip blank line after heading
+                let skip = if note[insert_at..].starts_with('\n') {
+                    1
+                } else {
+                    0
+                };
+                note.insert_str(insert_at + skip, &carried);
+            }
         }
 
         println!("Carried over {} unchecked todo(s).", unchecked_todos.len());
@@ -289,16 +294,14 @@ mod tests {
 
     fn temp_dir() -> PathBuf {
         let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "morg_diary_test_{}_{}",
-            std::process::id(),
-            id
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("morg_diary_test_{}_{}", std::process::id(), id));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
     }
 
+    #[allow(unused)]
     fn make_config(dir: &Path) -> crate::config::Config {
         crate::config::Config {
             root: dir.to_path_buf(),
@@ -398,7 +401,8 @@ mod tests {
             "15",
             "09:30",
             true,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Check archive exists
         assert!(archive_file.exists());
@@ -426,10 +430,18 @@ mod tests {
         fs::create_dir_all(&diary_dir).unwrap();
 
         let template = diary_dir.join("template.md");
-        fs::write(&template, "---\ndate: YYYY-MM-DD\n---\n\n## TODOs\n\n- [ ]\n- [ ]\n- [ ]\n").unwrap();
+        fs::write(
+            &template,
+            "---\ndate: YYYY-MM-DD\n---\n\n## TODOs\n\n- [ ]\n- [ ]\n- [ ]\n",
+        )
+        .unwrap();
 
         let today = diary_dir.join("today.md");
-        fs::write(&today, "---\ndate: 2026-04-05\n---\n\n- [ ] Leftover task\n").unwrap();
+        fs::write(
+            &today,
+            "---\ndate: 2026-04-05\n---\n\n- [ ] Leftover task\n",
+        )
+        .unwrap();
 
         let archive_dir = diary_dir.join("2026/04");
         let archive_file = archive_dir.join("05.md");
@@ -443,7 +455,8 @@ mod tests {
             "15",
             "10:00",
             false, // carry_todos = false
-        ).unwrap();
+        )
+        .unwrap();
 
         let new_note = fs::read_to_string(&today).unwrap();
         // Placeholder todos should remain (not replaced with carried ones)
@@ -477,7 +490,8 @@ mod tests {
             "15",
             "08:00",
             true,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert!(today.exists());
         let content = fs::read_to_string(&today).unwrap();
@@ -490,9 +504,18 @@ mod tests {
 
     #[test]
     fn test_parse_date_parts() {
-        assert_eq!(parse_date_parts("2026-04-05"), ("2026".into(), "04".into(), "05".into()));
-        assert_eq!(parse_date_parts("2025-12-31"), ("2025".into(), "12".into(), "31".into()));
-        assert_eq!(parse_date_parts("bad"), ("bad".into(), "01".into(), "01".into()));
+        assert_eq!(
+            parse_date_parts("2026-04-05"),
+            ("2026".into(), "04".into(), "05".into())
+        );
+        assert_eq!(
+            parse_date_parts("2025-12-31"),
+            ("2025".into(), "12".into(), "31".into())
+        );
+        assert_eq!(
+            parse_date_parts("bad"),
+            ("bad".into(), "01".into(), "01".into())
+        );
     }
 
     #[test]

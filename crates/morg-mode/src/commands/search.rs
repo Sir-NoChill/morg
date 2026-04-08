@@ -34,16 +34,19 @@ pub fn run(
     }
 
     if json {
-        let items: Vec<serde_json::Value> = results.iter().map(|r| {
-            let (file, lnum) = parse_location(&r.location);
-            serde_json::json!({
-                "file": file,
-                "line": lnum,
-                "kind": r.match_kind,
-                "text": r.matched_text,
-                "heading": r.heading,
+        let items: Vec<serde_json::Value> = results
+            .iter()
+            .map(|r| {
+                let (file, lnum) = parse_location(&r.location);
+                serde_json::json!({
+                    "file": file,
+                    "line": lnum,
+                    "kind": r.match_kind,
+                    "text": r.matched_text,
+                    "heading": r.heading,
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string(&items)?);
         return Ok(());
     }
@@ -54,7 +57,9 @@ pub fn run(
     }
 
     for r in &results {
-        let heading_ctx = r.heading.as_deref()
+        let heading_ctx = r
+            .heading
+            .as_deref()
             .map(|h| format!(" ({h})"))
             .unwrap_or_default();
         println!(
@@ -143,15 +148,38 @@ fn search_block<'a>(
                         matched_text: truncate(&plain, 80),
                     });
                 }
-                search_tags_in_content(&item.content, file, &item.span, query, *current_heading, results);
+                search_tags_in_content(
+                    &item.content,
+                    file,
+                    &item.span,
+                    query,
+                    *current_heading,
+                    results,
+                );
                 for child in &item.children {
-                    search_block(child, file, query, tags_only, headings_only, current_heading, results);
+                    search_block(
+                        child,
+                        file,
+                        query,
+                        tags_only,
+                        headings_only,
+                        current_heading,
+                        results,
+                    );
                 }
             }
         }
         Block::Callout(c) => {
             for child in &c.content {
-                search_block(child, file, query, tags_only, headings_only, current_heading, results);
+                search_block(
+                    child,
+                    file,
+                    query,
+                    tags_only,
+                    headings_only,
+                    current_heading,
+                    results,
+                );
             }
         }
         _ => {}

@@ -28,7 +28,10 @@ pub fn run(
     }
 
     // Run the command once initially
-    eprintln!("morg watch: running `{command}` on {} file(s)...", watch_paths.len());
+    eprintln!(
+        "morg watch: running `{command}` on {} file(s)...",
+        watch_paths.len()
+    );
     run_command(command, paths, output_dir);
 
     // Set up file watcher
@@ -50,10 +53,7 @@ pub fn run(
         match rx.recv_timeout(Duration::from_secs(1)) {
             Ok(Ok(event)) => {
                 // Only react to modify/create events on markdown files
-                if !matches!(
-                    event.kind,
-                    EventKind::Modify(_) | EventKind::Create(_)
-                ) {
+                if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                     continue;
                 }
 
@@ -73,14 +73,13 @@ pub fn run(
                     continue;
                 }
 
-                let changed: Vec<_> = event.paths.iter()
+                let changed: Vec<_> = event
+                    .paths
+                    .iter()
                     .filter_map(|p| p.file_name())
                     .map(|n| n.to_string_lossy().to_string())
                     .collect();
-                eprintln!(
-                    "\nmorg watch: change detected in {}",
-                    changed.join(", ")
-                );
+                eprintln!("\nmorg watch: change detected in {}", changed.join(", "));
 
                 run_command(command, paths, output_dir);
                 last_run = Instant::now();

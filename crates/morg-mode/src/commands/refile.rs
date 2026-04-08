@@ -8,7 +8,9 @@ fn parse_spec(spec: &str) -> Result<(PathBuf, LocationSpec), String> {
     if let Some((file_part, line_part)) = spec.rsplit_once(':') {
         // Disambiguate: file::heading vs file:123
         if !line_part.is_empty() && line_part.chars().all(|c| c.is_ascii_digit()) {
-            let line: u32 = line_part.parse().map_err(|_| format!("invalid line number: {line_part}"))?;
+            let line: u32 = line_part
+                .parse()
+                .map_err(|_| format!("invalid line number: {line_part}"))?;
             return Ok((PathBuf::from(file_part), LocationSpec::Line(line)));
         }
     }
@@ -18,7 +20,10 @@ fn parse_spec(spec: &str) -> Result<(PathBuf, LocationSpec), String> {
         if heading_part.is_empty() {
             return Ok((PathBuf::from(file_part), LocationSpec::End));
         }
-        return Ok((PathBuf::from(file_part), LocationSpec::Heading(heading_part.to_string())));
+        return Ok((
+            PathBuf::from(file_part),
+            LocationSpec::Heading(heading_part.to_string()),
+        ));
     }
 
     // Just a file — target end of file
@@ -31,9 +36,15 @@ enum LocationSpec {
     End,
 }
 
-pub fn run(source_spec: &str, target_spec: &str, dry_run: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let (source_path, source_loc) = parse_spec(source_spec).map_err(|e| format!("invalid source: {e}"))?;
-    let (target_path, target_loc) = parse_spec(target_spec).map_err(|e| format!("invalid target: {e}"))?;
+pub fn run(
+    source_spec: &str,
+    target_spec: &str,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (source_path, source_loc) =
+        parse_spec(source_spec).map_err(|e| format!("invalid source: {e}"))?;
+    let (target_path, target_loc) =
+        parse_spec(target_spec).map_err(|e| format!("invalid target: {e}"))?;
 
     if !source_path.exists() {
         return Err(format!("source file not found: {}", source_path.display()).into());
@@ -44,15 +55,26 @@ pub fn run(source_spec: &str, target_spec: &str, dry_run: bool) -> Result<(), Bo
     let source_result = morg_parser::parser::parse_document(&source_text);
 
     // Find the heading in the source
-    let heading_line_0idx = find_heading(&source_result.document.children, &source_loc, &source_lines)?;
+    let heading_line_0idx =
+        find_heading(&source_result.document.children, &source_loc, &source_lines)?;
     let heading_level = detect_heading_level(source_lines[heading_line_0idx]);
-    let subtree_end = find_subtree_end(heading_level, heading_line_0idx, &source_result.document.children, source_lines.len());
+    let subtree_end = find_subtree_end(
+        heading_level,
+        heading_line_0idx,
+        &source_result.document.children,
+        source_lines.len(),
+    );
 
     let heading_text = source_lines[heading_line_0idx].trim();
 
     if dry_run {
         println!("[dry run] Would move:");
-        println!("  From: {}:{} ({} lines)", source_path.display(), heading_line_0idx + 1, subtree_end - heading_line_0idx);
+        println!(
+            "  From: {}:{} ({} lines)",
+            source_path.display(),
+            heading_line_0idx + 1,
+            subtree_end - heading_line_0idx
+        );
         println!("  Heading: {heading_text}");
         println!("  To: {target_spec}");
         return Ok(());
@@ -193,9 +215,10 @@ fn find_heading(
             let text_lower = text.to_lowercase();
             for block in blocks {
                 if let Block::Heading(h) = block
-                    && h.content.plain_text().to_lowercase().contains(&text_lower) {
-                        return Ok((h.span.line as usize).saturating_sub(1));
-                    }
+                    && h.content.plain_text().to_lowercase().contains(&text_lower)
+                {
+                    return Ok((h.span.line as usize).saturating_sub(1));
+                }
             }
             Err(format!("heading matching \"{text}\" not found").into())
         }
@@ -211,11 +234,12 @@ fn find_heading_insert_point(
     let text_lower = heading_text.to_lowercase();
     for block in blocks {
         if let Block::Heading(h) = block
-            && h.content.plain_text().to_lowercase().contains(&text_lower) {
-                // Insert at the end of this heading's subtree
-                let end = find_subtree_end(h.level, (h.span.line as usize) - 1, blocks, total_lines);
-                return Ok(end);
-            }
+            && h.content.plain_text().to_lowercase().contains(&text_lower)
+        {
+            // Insert at the end of this heading's subtree
+            let end = find_subtree_end(h.level, (h.span.line as usize) - 1, blocks, total_lines);
+            return Ok(end);
+        }
     }
     Err(format!("target heading matching \"{heading_text}\" not found").into())
 }
@@ -225,7 +249,12 @@ fn detect_heading_level(line: &str) -> u8 {
     trimmed.bytes().take_while(|&b| b == b'#').count() as u8
 }
 
-fn find_subtree_end(level: u8, heading_line_0idx: usize, blocks: &[Block], total_lines: usize) -> usize {
+fn find_subtree_end(
+    level: u8,
+    heading_line_0idx: usize,
+    blocks: &[Block],
+    total_lines: usize,
+) -> usize {
     let mut found_self = false;
     for block in blocks {
         if let Block::Heading(h) = block {

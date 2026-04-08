@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "morg", about = "Markdown org-mode — tangle, track, and organize")]
+#[command(
+    name = "morg",
+    about = "Markdown org-mode — tangle, track, and organize"
+)]
 pub struct Cli {
     /// Output format: text (default) or json
     #[arg(long, global = true, default_value = "text")]

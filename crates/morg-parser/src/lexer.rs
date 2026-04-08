@@ -111,10 +111,10 @@ fn tokenize_blocks(source: &str) -> Vec<Spanned> {
     }
 
     // Replace final Newline with Eof
-    if let Some(last) = tokens.last_mut() {
-        if last.kind == Token::Newline {
-            last.kind = Token::Eof;
-        }
+    if let Some(last) = tokens.last_mut()
+        && last.kind == Token::Newline
+    {
+        last.kind = Token::Eof;
     }
 
     tokens
@@ -125,43 +125,76 @@ fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
     let trimmed = text.trim();
 
     if trimmed.is_empty() {
-        out.push(Spanned { kind: Token::BlankLine, span });
+        out.push(Spanned {
+            kind: Token::BlankLine,
+            span,
+        });
         return;
     }
 
     // Comments
     if trimmed.starts_with("//") {
-        out.push(Spanned { kind: Token::LineComment, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::LineComment,
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
     if trimmed.starts_with("/*") {
-        out.push(Spanned { kind: Token::BlockCommentOpen, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::BlockCommentOpen,
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
     if trimmed.ends_with("*/") || trimmed == "*/" {
-        out.push(Spanned { kind: Token::BlockCommentClose, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::BlockCommentClose,
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Footnote definition
     if let Some(label) = try_footnote_def(trimmed) {
-        out.push(Spanned { kind: Token::FootnoteDefStart { label }, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::FootnoteDefStart { label },
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Frontmatter delimiter
     if trimmed == "---" {
-        out.push(Spanned { kind: Token::FrontmatterDelim, span });
+        out.push(Spanned {
+            kind: Token::FrontmatterDelim,
+            span,
+        });
         return;
     }
 
     // Horizontal rule
     if is_horizontal_rule(trimmed) {
-        out.push(Spanned { kind: Token::HorizontalRule, span });
+        out.push(Spanned {
+            kind: Token::HorizontalRule,
+            span,
+        });
         return;
     }
 
@@ -174,82 +207,135 @@ fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
     // HTML
     if let Some(tok) = try_html_line(trimmed) {
         out.push(Spanned { kind: tok, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Table row
     if trimmed.starts_with('|') {
-        out.push(Spanned { kind: Token::TableRow, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::TableRow,
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Callout
     if let Some((kind, metadata)) = try_callout(trimmed) {
-        out.push(Spanned { kind: Token::CalloutStart { kind, metadata }, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::CalloutStart { kind, metadata },
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Blockquote continuation
     if trimmed.starts_with('>') {
-        out.push(Spanned { kind: Token::BlockquoteContinuation, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::BlockquoteContinuation,
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // List item
     if let Some((indent, ordered)) = try_list_item(text) {
-        out.push(Spanned { kind: Token::ListMarker { ordered, indent }, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::ListMarker { ordered, indent },
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Heading
     if let Some(level) = try_heading(text) {
-        out.push(Spanned { kind: Token::Heading { level }, span });
-        out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+        out.push(Spanned {
+            kind: Token::Heading { level },
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
     // Properties markers
     if trimmed == "#properties" {
-        out.push(Spanned { kind: Token::PropertiesOpen, span });
+        out.push(Spanned {
+            kind: Token::PropertiesOpen,
+            span,
+        });
         return;
     }
     if trimmed == "#end" {
-        out.push(Spanned { kind: Token::PropertiesClose, span });
+        out.push(Spanned {
+            kind: Token::PropertiesClose,
+            span,
+        });
         return;
     }
 
     // Block-level tag check
-    if trimmed.starts_with('#') {
-        let rest = &trimmed[1..];
-        if !rest.is_empty() && !rest.starts_with(' ') {
-            let first = rest.chars().next().unwrap();
-            if first.is_alphanumeric() || first == '_' {
-                let name_end = rest
-                    .find(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
-                    .unwrap_or(rest.len());
-                let name = &rest[..name_end];
-                let tag_tok = match Keyword::from_str(name) {
-                    Some(kw) => Token::Tag(kw),
-                    None => Token::UnknownTag { name: name.to_string() },
-                };
-                out.push(Spanned { kind: tag_tok, span });
-                let arg = rest[name_end..].trim();
-                if !arg.is_empty() {
-                    out.push(Spanned { kind: Token::TagArg(arg.to_string()), span });
-                }
-                return;
+    if let Some(rest) = trimmed.strip_prefix('#')
+        && !rest.is_empty()
+        && !rest.starts_with(' ')
+    {
+        let first = rest.chars().next().unwrap();
+        if first.is_alphanumeric() || first == '_' {
+            let name_end = rest
+                .find(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
+                .unwrap_or(rest.len());
+            let name = &rest[..name_end];
+            let tag_tok = match Keyword::from_str(name) {
+                Some(kw) => Token::Tag(kw),
+                None => Token::UnknownTag {
+                    name: name.to_string(),
+                },
+            };
+            out.push(Spanned {
+                kind: tag_tok,
+                span,
+            });
+            let arg = rest[name_end..].trim();
+            if !arg.is_empty() {
+                out.push(Spanned {
+                    kind: Token::TagArg(arg.to_string()),
+                    span,
+                });
             }
+            return;
         }
     }
 
     // Plain text — emit as RawLine for parser to inline-tokenize
-    out.push(Spanned { kind: Token::Text(String::new()), span }); // marker: this is a text line
-    out.push(Spanned { kind: Token::RawLine(text.to_string()), span });
+    out.push(Spanned {
+        kind: Token::Text(String::new()),
+        span,
+    }); // marker: this is a text line
+    out.push(Spanned {
+        kind: Token::RawLine(text.to_string()),
+        span,
+    });
 }
 
 // ===========================================================================
@@ -286,19 +372,25 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
         }
 
         // Inline code
-        if ch == b'`' {
-            if let Some((code, end)) = scan_backtick_code(text, i) {
-                flush_text_token(&mut current_text, span, out);
-                out.push(Spanned { kind: Token::InlineCode(code.to_string()), span });
-                i = end;
-                continue;
-            }
+        if ch == b'`'
+            && let Some((code, end)) = scan_backtick_code(text, i)
+        {
+            flush_text_token(&mut current_text, span, out);
+            out.push(Spanned {
+                kind: Token::InlineCode(code.to_string()),
+                span,
+            });
+            i = end;
+            continue;
         }
 
         // Bold **
         if ch == b'*' && peek(bytes, i + 1) == Some(b'*') {
             flush_text_token(&mut current_text, span, out);
-            out.push(Spanned { kind: Token::BoldDelim, span });
+            out.push(Spanned {
+                kind: Token::BoldDelim,
+                span,
+            });
             i += 2;
             continue;
         }
@@ -306,7 +398,10 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
         // Strikethrough ~~
         if ch == b'~' && peek(bytes, i + 1) == Some(b'~') {
             flush_text_token(&mut current_text, span, out);
-            out.push(Spanned { kind: Token::StrikethroughDelim, span });
+            out.push(Spanned {
+                kind: Token::StrikethroughDelim,
+                span,
+            });
             i += 2;
             continue;
         }
@@ -314,44 +409,54 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
         // Italic * (not **)
         if ch == b'*' && peek(bytes, i + 1) != Some(b'*') {
             flush_text_token(&mut current_text, span, out);
-            out.push(Spanned { kind: Token::ItalicDelim, span });
+            out.push(Spanned {
+                kind: Token::ItalicDelim,
+                span,
+            });
             i += 1;
             continue;
         }
 
         // Footnote ref [^label]
-        if ch == b'[' && peek(bytes, i + 1) == Some(b'^') {
-            if let Some((label, end)) = try_footnote_ref(text, i) {
-                flush_text_token(&mut current_text, span, out);
-                out.push(Spanned { kind: Token::FootnoteRef { label }, span });
-                i = end;
-                continue;
-            }
+        if ch == b'['
+            && peek(bytes, i + 1) == Some(b'^')
+            && let Some((label, end)) = try_footnote_ref(text, i)
+        {
+            flush_text_token(&mut current_text, span, out);
+            out.push(Spanned {
+                kind: Token::FootnoteRef { label },
+                span,
+            });
+            i = end;
+            continue;
         }
 
         // Link [text](url ...)
-        if ch == b'[' {
-            if let Some((link_tok, end)) = try_link(text, i) {
-                flush_text_token(&mut current_text, span, out);
-                out.push(Spanned { kind: link_tok, span });
-                i = end;
-                continue;
-            }
+        if ch == b'['
+            && let Some((link_tok, end)) = try_link(text, i)
+        {
+            flush_text_token(&mut current_text, span, out);
+            out.push(Spanned {
+                kind: link_tok,
+                span,
+            });
+            i = end;
+            continue;
         }
 
         // Tag
         if ch == b'#' {
-            if let Some(next) = peek(bytes, i + 1) {
-                if (next as char).is_alphanumeric() || next == b'_' {
-                    flush_text_token(&mut current_text, span, out);
-                    let (tok, arg_tok, end) = tokenize_tag(text, i + 1, span);
-                    out.push(Spanned { kind: tok, span });
-                    if let Some(at) = arg_tok {
-                        out.push(Spanned { kind: at, span });
-                    }
-                    i = end;
-                    continue;
+            if let Some(next) = peek(bytes, i + 1)
+                && ((next as char).is_alphanumeric() || next == b'_')
+            {
+                flush_text_token(&mut current_text, span, out);
+                let (tok, arg_tok, end) = tokenize_tag(text, i + 1, span);
+                out.push(Spanned { kind: tok, span });
+                if let Some(at) = arg_tok {
+                    out.push(Spanned { kind: at, span });
                 }
+                i = end;
+                continue;
             }
             current_text.push('#');
             i += 1;
@@ -367,7 +472,10 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
 
 fn flush_text_token(buf: &mut String, span: Span, out: &mut Vec<Spanned>) {
     if !buf.is_empty() {
-        out.push(Spanned { kind: Token::Text(std::mem::take(buf)), span });
+        out.push(Spanned {
+            kind: Token::Text(std::mem::take(buf)),
+            span,
+        });
     }
 }
 
@@ -378,7 +486,7 @@ fn flush_text_token(buf: &mut String, span: Span, out: &mut Vec<Spanned>) {
 fn try_heading(text: &str) -> Option<u8> {
     let trimmed = text.trim_start();
     let hashes = trimmed.bytes().take_while(|&b| b == b'#').count();
-    if hashes >= 1 && hashes <= 6 {
+    if (1..=6).contains(&hashes) {
         let rest = &trimmed[hashes..];
         if rest.is_empty() || rest.starts_with(' ') {
             return Some(hashes as u8);
@@ -398,9 +506,16 @@ fn try_code_fence(trimmed: &str) -> Option<Token> {
     }
     let rest = trimmed[fence_len..].trim();
     if rest.is_empty() {
-        Some(Token::FencedCodeClose { fence_char, fence_len })
+        Some(Token::FencedCodeClose {
+            fence_char,
+            fence_len,
+        })
     } else {
-        Some(Token::FencedCodeOpen { info: rest.to_string(), fence_char, fence_len })
+        Some(Token::FencedCodeOpen {
+            info: rest.to_string(),
+            fence_char,
+            fence_len,
+        })
     }
 }
 
@@ -449,7 +564,11 @@ fn try_callout(trimmed: &str) -> Option<(String, Option<String>)> {
     let metadata = if let Some(meta_rest) = after_type.trim_start().strip_prefix('[') {
         meta_rest.find(']').and_then(|meta_end| {
             let meta = meta_rest[..meta_end].trim();
-            if meta.is_empty() { None } else { Some(meta.to_string()) }
+            if meta.is_empty() {
+                None
+            } else {
+                Some(meta.to_string())
+            }
         })
     } else {
         None
@@ -494,56 +613,86 @@ fn peek(bytes: &[u8], i: usize) -> Option<u8> {
     bytes.get(i).copied()
 }
 
-fn scan_backtick_code<'a>(text: &'a str, start: usize) -> Option<(&'a str, usize)> {
+fn scan_backtick_code(text: &str, start: usize) -> Option<(&str, usize)> {
     let after = start + 1;
-    if after >= text.len() { return None; }
+    if after >= text.len() {
+        return None;
+    }
     let end = text[after..].find('`')?;
     let code = &text[after..after + end];
-    if code.is_empty() { return None; }
+    if code.is_empty() {
+        return None;
+    }
     Some((code, after + end + 1))
 }
 
 fn try_footnote_ref(text: &str, start: usize) -> Option<(String, usize)> {
     let rest = &text[start..];
-    if !rest.starts_with("[^") { return None; }
+    if !rest.starts_with("[^") {
+        return None;
+    }
     let after = &rest[2..];
     let end = after.find(']')?;
     let label = &after[..end];
-    if label.is_empty() || label.contains(' ') { return None; }
+    if label.is_empty() || label.contains(' ') {
+        return None;
+    }
     Some((label.to_string(), start + 2 + end + 1))
 }
 
 fn try_link(text: &str, start: usize) -> Option<(Token, usize)> {
     let bytes = text.as_bytes();
-    if bytes.get(start).copied() != Some(b'[') { return None; }
+    if bytes.get(start).copied() != Some(b'[') {
+        return None;
+    }
 
     let mut depth = 0i32;
     let mut pos = start;
     let bracket_close;
     loop {
-        if pos >= bytes.len() { return None; }
-        if bytes[pos] == b'\\' && pos + 1 < bytes.len() { pos += 2; continue; }
-        if bytes[pos] == b'[' { depth += 1; }
-        else if bytes[pos] == b']' {
+        if pos >= bytes.len() {
+            return None;
+        }
+        if bytes[pos] == b'\\' && pos + 1 < bytes.len() {
+            pos += 2;
+            continue;
+        }
+        if bytes[pos] == b'[' {
+            depth += 1;
+        } else if bytes[pos] == b']' {
             depth -= 1;
-            if depth == 0 { bracket_close = pos; break; }
+            if depth == 0 {
+                bracket_close = pos;
+                break;
+            }
         }
         pos += 1;
     }
 
     let link_text = &text[start + 1..bracket_close];
     pos = bracket_close + 1;
-    if pos >= bytes.len() || bytes[pos] != b'(' { return None; }
+    if pos >= bytes.len() || bytes[pos] != b'(' {
+        return None;
+    }
 
     let mut paren_depth = 0i32;
     let paren_close;
     loop {
-        if pos >= bytes.len() { return None; }
-        if bytes[pos] == b'\\' && pos + 1 < bytes.len() { pos += 2; continue; }
-        if bytes[pos] == b'(' { paren_depth += 1; }
-        else if bytes[pos] == b')' {
+        if pos >= bytes.len() {
+            return None;
+        }
+        if bytes[pos] == b'\\' && pos + 1 < bytes.len() {
+            pos += 2;
+            continue;
+        }
+        if bytes[pos] == b'(' {
+            paren_depth += 1;
+        } else if bytes[pos] == b')' {
             paren_depth -= 1;
-            if paren_depth == 0 { paren_close = pos; break; }
+            if paren_depth == 0 {
+                paren_close = pos;
+                break;
+            }
         }
         pos += 1;
     }
@@ -552,25 +701,32 @@ fn try_link(text: &str, start: usize) -> Option<(Token, usize)> {
     let (url, title, meta) = parse_link_paren(paren_inner);
 
     Some((
-        Token::Link { text: link_text.to_string(), url, title, meta },
+        Token::Link {
+            text: link_text.to_string(),
+            url,
+            title,
+            meta,
+        },
         paren_close + 1,
     ))
 }
 
 fn parse_link_paren(inner: &str) -> (String, Option<String>, Option<String>) {
     let inner = inner.trim();
-    let url_end = inner
-        .find(|c: char| c == ' ' || c == '"' || c == '[')
-        .unwrap_or(inner.len());
+    let url_end = inner.find([' ', '"', '[']).unwrap_or(inner.len());
     let url = inner[..url_end].to_string();
     let rest = inner[url_end..].trim();
 
-    if rest.is_empty() { return (url, None, None); }
+    if rest.is_empty() {
+        return (url, None, None);
+    }
 
-    let (title, rest) = if rest.starts_with('"') {
-        let after_quote = &rest[1..];
+    let (title, rest) = if let Some(after_quote) = rest.strip_prefix('"') {
         if let Some(end) = after_quote.find('"') {
-            (Some(after_quote[..end].to_string()), after_quote[end + 1..].trim())
+            (
+                Some(after_quote[..end].to_string()),
+                after_quote[end + 1..].trim(),
+            )
         } else {
             (None, rest)
         }
@@ -593,13 +749,19 @@ fn tokenize_tag(text: &str, name_start: usize, _span: Span) -> (Token, Option<To
 
     while pos < bytes.len() {
         let c = bytes[pos] as char;
-        if c.is_alphanumeric() || c == '-' || c == '_' { pos += 1; } else { break; }
+        if c.is_alphanumeric() || c == '-' || c == '_' {
+            pos += 1;
+        } else {
+            break;
+        }
     }
 
     let name = &text[name_start..pos];
     let tok = match Keyword::from_str(name) {
         Some(kw) => Token::Tag(kw),
-        None => Token::UnknownTag { name: name.to_string() },
+        None => Token::UnknownTag {
+            name: name.to_string(),
+        },
     };
 
     let mut arg = String::new();
@@ -607,10 +769,11 @@ fn tokenize_tag(text: &str, name_start: usize, _span: Span) -> (Token, Option<To
         pos += 1;
         while pos < bytes.len() {
             let c = bytes[pos];
-            if c == b'#' {
-                if let Some(next) = peek(bytes, pos + 1) {
-                    if (next as char).is_alphanumeric() || next == b'_' { break; }
-                }
+            if c == b'#'
+                && let Some(next) = peek(bytes, pos + 1)
+                && ((next as char).is_alphanumeric() || next == b'_')
+            {
+                break;
             }
             if c == b'\\' {
                 if peek(bytes, pos + 1) == Some(b'#') {
@@ -629,7 +792,11 @@ fn tokenize_tag(text: &str, name_start: usize, _span: Span) -> (Token, Option<To
 
     let arg_tok = {
         let trimmed = arg.trim();
-        if trimmed.is_empty() { None } else { Some(Token::TagArg(trimmed.to_string())) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(Token::TagArg(trimmed.to_string()))
+        }
     };
 
     (tok, arg_tok, pos)
@@ -671,7 +838,9 @@ mod tests {
     #[test]
     fn test_code_fence() {
         let tokens = block_tokens("```rust #tangle file=main.rs");
-        assert!(matches!(&tokens[0], Token::FencedCodeOpen { info, .. } if info == "rust #tangle file=main.rs"));
+        assert!(
+            matches!(&tokens[0], Token::FencedCodeOpen { info, .. } if info == "rust #tangle file=main.rs")
+        );
     }
 
     #[test]
@@ -684,7 +853,13 @@ mod tests {
     #[test]
     fn test_list_item() {
         let tokens = block_tokens("- [ ] Task item");
-        assert!(matches!(&tokens[0], Token::ListMarker { ordered: false, indent: 0 }));
+        assert!(matches!(
+            &tokens[0],
+            Token::ListMarker {
+                ordered: false,
+                indent: 0
+            }
+        ));
         assert!(matches!(&tokens[1], Token::RawLine(_)));
     }
 
@@ -759,7 +934,9 @@ mod tests {
     #[test]
     fn test_inline_link() {
         let tokens = inline_tokens("[click](https://example.com)");
-        assert!(matches!(&tokens[0], Token::Link { text, url, .. } if text == "click" && url == "https://example.com"));
+        assert!(
+            matches!(&tokens[0], Token::Link { text, url, .. } if text == "click" && url == "https://example.com")
+        );
     }
 
     #[test]

@@ -58,7 +58,9 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                 }
                 TagKind::Unknown { name, value } => {
                     // Check if this matches a custom TODO sequence state
-                    if let Some((state_name, is_done)) = collect::match_custom_state(name, &sequences) {
+                    if let Some((state_name, is_done)) =
+                        collect::match_custom_state(name, &sequences)
+                    {
                         let status = if is_done { "DONE" } else { "TODO" };
                         todos.push(TodoEntry {
                             status,
@@ -86,7 +88,12 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
 
         // Collect checkbox-based todos from lists
         let mut current_heading: Option<&Heading> = None;
-        collect_checkboxes(&pf.document.children, &pf.path, &mut current_heading, &mut todos);
+        collect_checkboxes(
+            &pf.document.children,
+            &pf.path,
+            &mut current_heading,
+            &mut todos,
+        );
     }
 
     // Sort: open items first, then by priority (A before B before C), then by location
@@ -98,19 +105,22 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
     });
 
     if json {
-        let items: Vec<serde_json::Value> = todos.iter().map(|e| {
-            let (file, lnum) = parse_location(&e.location);
-            serde_json::json!({
-                "status": e.status,
-                "text": e.text,
-                "file": file,
-                "line": lnum,
-                "heading": e.heading,
-                "priority": e.priority.map(|p| p.to_string()),
-                "effort": e.effort.map(report::format_duration_minutes),
-                "tags": e.inherited_tags,
+        let items: Vec<serde_json::Value> = todos
+            .iter()
+            .map(|e| {
+                let (file, lnum) = parse_location(&e.location);
+                serde_json::json!({
+                    "status": e.status,
+                    "text": e.text,
+                    "file": file,
+                    "line": lnum,
+                    "heading": e.heading,
+                    "priority": e.priority.map(|p| p.to_string()),
+                    "effort": e.effort.map(report::format_duration_minutes),
+                    "tags": e.inherited_tags,
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string(&items)?);
         return Ok(());
     }
@@ -174,7 +184,11 @@ fn collect_checkboxes<'a>(
         match block {
             Block::Heading(h) => {
                 // Skip archived headings
-                if h.content.tags().iter().any(|t| matches!(t.kind, TagKind::Archive)) {
+                if h.content
+                    .tags()
+                    .iter()
+                    .any(|t| matches!(t.kind, TagKind::Archive))
+                {
                     continue;
                 }
                 *current_heading = Some(h);

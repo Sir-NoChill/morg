@@ -6,10 +6,7 @@ use morg_parser::tags::{Repeater, TagKind, Timestamp};
 
 use crate::collect::{self, TagContext};
 
-pub fn run(
-    paths: &[PathBuf],
-    output: Option<&Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(paths: &[PathBuf], output: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
     let parsed = collect::parse_files(paths);
 
     let mut calendar = Calendar::new();
@@ -79,7 +76,11 @@ pub fn run(
                     calendar.push(event);
                     count += 1;
                 }
-                TagKind::Event { date, repeater, description } => {
+                TagKind::Event {
+                    date,
+                    repeater,
+                    description,
+                } => {
                     let summary = description
                         .clone()
                         .or(heading.clone())

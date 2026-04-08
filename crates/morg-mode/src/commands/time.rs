@@ -7,10 +7,7 @@ use morg_parser::tags::{ClockValue, TagKind};
 use crate::collect::{self, TagContext};
 use crate::report;
 
-pub fn run(
-    paths: &[PathBuf],
-    project: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(paths: &[PathBuf], project: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let parsed = collect::parse_files(paths);
 
     let mut clock_events: Vec<ClockEvent> = Vec::new();
@@ -24,9 +21,10 @@ pub fn run(
 
             // Filter by project if specified
             if let Some(proj) = project
-                && !heading.to_lowercase().contains(&proj.to_lowercase()) {
-                    return;
-                }
+                && !heading.to_lowercase().contains(&proj.to_lowercase())
+            {
+                return;
+            }
 
             match &ctx.tag.kind {
                 TagKind::ClockIn { datetime } => {
@@ -126,7 +124,11 @@ pub fn run(
     headings.sort_by(|a, b| b.1.cmp(&a.1));
 
     for (heading, mins) in &headings {
-        let label = if heading.is_empty() { "(no heading)" } else { heading };
+        let label = if heading.is_empty() {
+            "(no heading)"
+        } else {
+            heading
+        };
         println!("  {:<30} {}", label, report::format_duration_minutes(*mins));
     }
 

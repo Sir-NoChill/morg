@@ -10,24 +10,60 @@ pub struct Tag {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TagKind {
-    Todo { text: Option<String> },
-    Done { text: Option<String> },
-    Deadline { date: Timestamp, repeater: Option<Repeater>, warning: Option<u32> },
-    Scheduled { date: Timestamp, repeater: Option<Repeater>, warning: Option<u32> },
-    Date { date: Timestamp, repeater: Option<Repeater> },
-    Event { date: Timestamp, repeater: Option<Repeater>, description: Option<String> },
-    ClockIn { datetime: NaiveDateTime },
-    ClockOut { datetime: NaiveDateTime },
+    Todo {
+        text: Option<String>,
+    },
+    Done {
+        text: Option<String>,
+    },
+    Deadline {
+        date: Timestamp,
+        repeater: Option<Repeater>,
+        warning: Option<u32>,
+    },
+    Scheduled {
+        date: Timestamp,
+        repeater: Option<Repeater>,
+        warning: Option<u32>,
+    },
+    Date {
+        date: Timestamp,
+        repeater: Option<Repeater>,
+    },
+    Event {
+        date: Timestamp,
+        repeater: Option<Repeater>,
+        description: Option<String>,
+    },
+    ClockIn {
+        datetime: NaiveDateTime,
+    },
+    ClockOut {
+        datetime: NaiveDateTime,
+    },
     Clock(ClockValue),
     Tangle,
-    Priority { level: PriorityLevel },
-    Effort { minutes: u64 },
-    Closed { datetime: NaiveDateTime },
+    Priority {
+        level: PriorityLevel,
+    },
+    Effort {
+        minutes: u64,
+    },
+    Closed {
+        datetime: NaiveDateTime,
+    },
     Archive,
     Progress,
     /// A custom TODO workflow state defined in frontmatter.
-    CustomState { name: String, is_done: bool, text: Option<String> },
-    Unknown { name: String, value: Option<String> },
+    CustomState {
+        name: String,
+        is_done: bool,
+        text: Option<String>,
+    },
+    Unknown {
+        name: String,
+        value: Option<String>,
+    },
 }
 
 /// A timestamp that may be date-only or date+time.
@@ -123,14 +159,26 @@ pub fn parse_tag(name: &str, arg: Option<&str>, span: Span) -> Tag {
     use crate::tokens::Keyword;
 
     let kind = match Keyword::from_str(name) {
-        Some(Keyword::Todo) => TagKind::Todo { text: non_empty(arg) },
-        Some(Keyword::Done) => TagKind::Done { text: non_empty(arg) },
+        Some(Keyword::Todo) => TagKind::Todo {
+            text: non_empty(arg),
+        },
+        Some(Keyword::Done) => TagKind::Done {
+            text: non_empty(arg),
+        },
         Some(Keyword::Deadline) => match parse_timestamp_full(arg) {
-            Some((date, repeater, warning)) => TagKind::Deadline { date, repeater, warning },
+            Some((date, repeater, warning)) => TagKind::Deadline {
+                date,
+                repeater,
+                warning,
+            },
             None => unknown(name, arg),
         },
         Some(Keyword::Scheduled) => match parse_timestamp_full(arg) {
-            Some((date, repeater, warning)) => TagKind::Scheduled { date, repeater, warning },
+            Some((date, repeater, warning)) => TagKind::Scheduled {
+                date,
+                repeater,
+                warning,
+            },
             None => unknown(name, arg),
         },
         Some(Keyword::Date) => match parse_timestamp_full(arg) {
@@ -138,7 +186,11 @@ pub fn parse_tag(name: &str, arg: Option<&str>, span: Span) -> Tag {
             None => unknown(name, arg),
         },
         Some(Keyword::Event) => match parse_event(arg) {
-            Some((date, repeater, description)) => TagKind::Event { date, repeater, description },
+            Some((date, repeater, description)) => TagKind::Event {
+                date,
+                repeater,
+                description,
+            },
             None => unknown(name, arg),
         },
         Some(Keyword::ClockIn) => match parse_datetime(arg) {
@@ -184,9 +236,7 @@ fn unknown(name: &str, arg: Option<&str>) -> TagKind {
 }
 
 fn non_empty(s: Option<&str>) -> Option<String> {
-    s.map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from)
+    s.map(str::trim).filter(|s| !s.is_empty()).map(String::from)
 }
 
 /// Parse a timestamp with optional time, repeater, and warning period.
@@ -226,7 +276,9 @@ fn parse_timestamp_full(arg: Option<&str>) -> Option<(Timestamp, Option<Repeater
     // Repeater: +Nunit
     if remaining.starts_with('+') {
         let after_plus = &remaining[1..];
-        let num_end = after_plus.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_plus.len());
+        let num_end = after_plus
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_plus.len());
         if num_end > 0 {
             let unit_end = 1 + num_end + 1; // +digits+unit
             if unit_end <= remaining.len() {
@@ -237,17 +289,18 @@ fn parse_timestamp_full(arg: Option<&str>) -> Option<(Timestamp, Option<Repeater
     }
 
     // Warning: -Nd
-    if remaining.starts_with('-') {
-        let after_minus = &remaining[1..];
-        let num_end = after_minus.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_minus.len());
-        if num_end > 0 {
-            if let Ok(days) = after_minus[..num_end].parse::<u32>() {
-                // Verify the unit is 'd'
-                if after_minus.len() > num_end {
-                    let unit = after_minus.as_bytes()[num_end];
-                    if unit == b'd' || unit == b'D' {
-                        warning = Some(days);
-                    }
+    if let Some(after_minus) = remaining.strip_prefix('-') {
+        let num_end = after_minus
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_minus.len());
+        if num_end > 0
+            && let Ok(days) = after_minus[..num_end].parse::<u32>()
+        {
+            // Verify the unit is 'd'
+            if after_minus.len() > num_end {
+                let unit = after_minus.as_bytes()[num_end];
+                if unit == b'd' || unit == b'D' {
+                    warning = Some(days);
                 }
             }
         }
@@ -301,8 +354,7 @@ fn parse_event(arg: Option<&str>) -> Option<(Timestamp, Option<Repeater>, Option
     };
 
     // Check for repeater before description
-    let (repeater, description_part) = if after_ts.starts_with('+') {
-        let after_plus = &after_ts[1..];
+    let (repeater, description_part) = if let Some(after_plus) = after_ts.strip_prefix('+') {
         let num_end = after_plus
             .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(after_plus.len());
@@ -412,7 +464,9 @@ mod tests {
     #[test]
     fn test_parse_deadline() {
         let tag = parse_tag("deadline", Some("2026-04-10"), Span::empty(1, 1));
-        assert!(matches!(tag.kind, TagKind::Deadline { date: Timestamp::Date(d), repeater: None, warning: None } if d == NaiveDate::from_ymd_opt(2026, 4, 10).unwrap()));
+        assert!(
+            matches!(tag.kind, TagKind::Deadline { date: Timestamp::Date(d), repeater: None, warning: None } if d == NaiveDate::from_ymd_opt(2026, 4, 10).unwrap())
+        );
     }
 
     #[test]
@@ -431,23 +485,42 @@ mod tests {
     #[test]
     fn test_parse_deadline_with_time() {
         let tag = parse_tag("deadline", Some("2026-04-10T14:00"), Span::empty(1, 1));
-        assert!(matches!(tag.kind, TagKind::Deadline { date: Timestamp::DateTime(_), .. }));
+        assert!(matches!(
+            tag.kind,
+            TagKind::Deadline {
+                date: Timestamp::DateTime(_),
+                ..
+            }
+        ));
     }
 
     #[test]
     fn test_parse_deadline_with_warning() {
         let tag = parse_tag("deadline", Some("2026-04-10 -3d"), Span::empty(1, 1));
-        assert!(matches!(tag.kind, TagKind::Deadline { warning: Some(3), .. }));
+        assert!(matches!(
+            tag.kind,
+            TagKind::Deadline {
+                warning: Some(3),
+                ..
+            }
+        ));
     }
 
     #[test]
     fn test_parse_deadline_full() {
-        let tag = parse_tag("deadline", Some("2026-04-10T14:00 +1w -3d"), Span::empty(1, 1));
+        let tag = parse_tag(
+            "deadline",
+            Some("2026-04-10T14:00 +1w -3d"),
+            Span::empty(1, 1),
+        );
         assert!(matches!(
             tag.kind,
             TagKind::Deadline {
                 date: Timestamp::DateTime(_),
-                repeater: Some(Repeater { interval: 1, unit: RepeaterUnit::Week }),
+                repeater: Some(Repeater {
+                    interval: 1,
+                    unit: RepeaterUnit::Week
+                }),
                 warning: Some(3),
             }
         ));
@@ -456,7 +529,9 @@ mod tests {
     #[test]
     fn test_parse_scheduled() {
         let tag = parse_tag("scheduled", Some("2026-04-05"), Span::empty(1, 1));
-        assert!(matches!(tag.kind, TagKind::Scheduled { date: Timestamp::Date(d), repeater: None, warning: None } if d == NaiveDate::from_ymd_opt(2026, 4, 5).unwrap()));
+        assert!(
+            matches!(tag.kind, TagKind::Scheduled { date: Timestamp::Date(d), repeater: None, warning: None } if d == NaiveDate::from_ymd_opt(2026, 4, 5).unwrap())
+        );
     }
 
     #[test]
@@ -478,7 +553,10 @@ mod tests {
         assert!(matches!(
             tag.kind,
             TagKind::Date {
-                repeater: Some(Repeater { interval: 1, unit: RepeaterUnit::Year }),
+                repeater: Some(Repeater {
+                    interval: 1,
+                    unit: RepeaterUnit::Year
+                }),
                 ..
             }
         ));
@@ -549,11 +627,41 @@ mod tests {
 
     #[test]
     fn test_repeater_parsing() {
-        assert_eq!(parse_repeater("+1d"), Some(Repeater { interval: 1, unit: RepeaterUnit::Day }));
-        assert_eq!(parse_repeater("+2w"), Some(Repeater { interval: 2, unit: RepeaterUnit::Week }));
-        assert_eq!(parse_repeater("+3m"), Some(Repeater { interval: 3, unit: RepeaterUnit::Month }));
-        assert_eq!(parse_repeater("+1y"), Some(Repeater { interval: 1, unit: RepeaterUnit::Year }));
-        assert_eq!(parse_repeater("+0d"), Some(Repeater { interval: 0, unit: RepeaterUnit::Day }));
+        assert_eq!(
+            parse_repeater("+1d"),
+            Some(Repeater {
+                interval: 1,
+                unit: RepeaterUnit::Day
+            })
+        );
+        assert_eq!(
+            parse_repeater("+2w"),
+            Some(Repeater {
+                interval: 2,
+                unit: RepeaterUnit::Week
+            })
+        );
+        assert_eq!(
+            parse_repeater("+3m"),
+            Some(Repeater {
+                interval: 3,
+                unit: RepeaterUnit::Month
+            })
+        );
+        assert_eq!(
+            parse_repeater("+1y"),
+            Some(Repeater {
+                interval: 1,
+                unit: RepeaterUnit::Year
+            })
+        );
+        assert_eq!(
+            parse_repeater("+0d"),
+            Some(Repeater {
+                interval: 0,
+                unit: RepeaterUnit::Day
+            })
+        );
         assert_eq!(parse_repeater("nope"), None);
         assert_eq!(parse_repeater("+"), None);
         assert_eq!(parse_repeater("+x"), None);
@@ -561,9 +669,15 @@ mod tests {
 
     #[test]
     fn test_rrule_generation() {
-        let r = Repeater { interval: 1, unit: RepeaterUnit::Week };
+        let r = Repeater {
+            interval: 1,
+            unit: RepeaterUnit::Week,
+        };
         assert_eq!(r.as_rrule(), "FREQ=WEEKLY;INTERVAL=1");
-        let r = Repeater { interval: 3, unit: RepeaterUnit::Month };
+        let r = Repeater {
+            interval: 3,
+            unit: RepeaterUnit::Month,
+        };
         assert_eq!(r.as_rrule(), "FREQ=MONTHLY;INTERVAL=3");
     }
 }

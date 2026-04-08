@@ -21,7 +21,11 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                 return;
             }
             let entry = match &ctx.tag.kind {
-                TagKind::Deadline { date, repeater, warning } => Some(AgendaEntry {
+                TagKind::Deadline {
+                    date,
+                    repeater,
+                    warning,
+                } => Some(AgendaEntry {
                     date: *date,
                     kind: "DEADLINE",
                     repeater: *repeater,
@@ -29,7 +33,11 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                     description: None,
                     location: report::format_location(ctx.file, &ctx.tag.span),
                 }),
-                TagKind::Scheduled { date, repeater, warning } => Some(AgendaEntry {
+                TagKind::Scheduled {
+                    date,
+                    repeater,
+                    warning,
+                } => Some(AgendaEntry {
                     date: *date,
                     kind: "SCHEDULED",
                     repeater: *repeater,
@@ -45,7 +53,11 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                     description: None,
                     location: report::format_location(ctx.file, &ctx.tag.span),
                 }),
-                TagKind::Event { date, repeater, description } => Some(AgendaEntry {
+                TagKind::Event {
+                    date,
+                    repeater,
+                    description,
+                } => Some(AgendaEntry {
                     date: *date,
                     kind: "EVENT",
                     repeater: *repeater,
@@ -117,18 +129,21 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
     expanded.sort_by_key(|e| e.date);
 
     if json {
-        let items: Vec<serde_json::Value> = expanded.iter().map(|e| {
-            let (file, lnum) = parse_location(&e.location);
-            serde_json::json!({
-                "date": e.date.to_string(),
-                "kind": e.kind,
-                "description": e.description,
-                "file": file,
-                "line": lnum,
-                "recurring": e.recurring,
-                "warning": e.is_warning,
+        let items: Vec<serde_json::Value> = expanded
+            .iter()
+            .map(|e| {
+                let (file, lnum) = parse_location(&e.location);
+                serde_json::json!({
+                    "date": e.date.to_string(),
+                    "kind": e.kind,
+                    "description": e.description,
+                    "file": file,
+                    "line": lnum,
+                    "recurring": e.recurring,
+                    "warning": e.is_warning,
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string(&items)?);
         return Ok(());
     }

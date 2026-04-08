@@ -25,7 +25,9 @@ pub fn run(paths: &[PathBuf], dry_run: bool) -> Result<(), Box<dyn std::error::E
 
         for block in &result.document.children {
             if let Block::Heading(h) = block {
-                let has_id = h.properties.as_ref()
+                let has_id = h
+                    .properties
+                    .as_ref()
                     .is_some_and(|p| p.entries.contains_key("id"));
 
                 if !has_id {
@@ -41,7 +43,8 @@ pub fn run(paths: &[PathBuf], dry_run: bool) -> Result<(), Box<dyn std::error::E
                     if has_existing_drawer {
                         // Add id line inside the existing drawer
                         // Find the #properties line
-                        let props_line = (h.properties.as_ref().unwrap().span.line as usize).saturating_sub(1);
+                        let props_line =
+                            (h.properties.as_ref().unwrap().span.line as usize).saturating_sub(1);
                         insertions.push((props_line, heading_text, uuid));
                     } else {
                         insertions.push((line_0idx, heading_text, uuid));
@@ -55,7 +58,11 @@ pub fn run(paths: &[PathBuf], dry_run: bool) -> Result<(), Box<dyn std::error::E
         }
 
         if dry_run {
-            println!("[dry run] {} — would assign {} ID(s):", file_path.display(), insertions.len());
+            println!(
+                "[dry run] {} — would assign {} ID(s):",
+                file_path.display(),
+                insertions.len()
+            );
             for (_, heading, uuid) in &insertions {
                 println!("  {heading} → {uuid}");
             }
@@ -65,7 +72,8 @@ pub fn run(paths: &[PathBuf], dry_run: bool) -> Result<(), Box<dyn std::error::E
 
         // Build new file content with inserted IDs
         let mut new_lines: Vec<String> = Vec::new();
-        let mut insertion_map: std::collections::HashMap<usize, Vec<(String, bool)>> = std::collections::HashMap::new();
+        let mut insertion_map: std::collections::HashMap<usize, Vec<(String, bool)>> =
+            std::collections::HashMap::new();
 
         for (line_idx, _heading_text, uuid) in &insertions {
             // Check if this heading already has a properties drawer
@@ -108,7 +116,11 @@ pub fn run(paths: &[PathBuf], dry_run: bool) -> Result<(), Box<dyn std::error::E
         let content = new_lines.join("\n");
         std::fs::write(file_path, &content)?;
 
-        println!("{} — assigned {} ID(s)", file_path.display(), insertions.len());
+        println!(
+            "{} — assigned {} ID(s)",
+            file_path.display(),
+            insertions.len()
+        );
         for (_, heading, uuid) in &insertions {
             println!("  {heading} → {uuid}");
         }
@@ -135,7 +147,9 @@ fn generate_uuid() -> String {
     // xorshift-based PRNG seeded from timestamp + incrementing counter
     static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut state = seed.wrapping_add(counter as u128).wrapping_mul(6364136223846793005) as u64;
+    let mut state = seed
+        .wrapping_add(counter as u128)
+        .wrapping_mul(6364136223846793005) as u64;
 
     let mut bytes = [0u8; 16];
     for chunk in bytes.chunks_mut(8) {
@@ -156,10 +170,21 @@ fn generate_uuid() -> String {
 
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5],
-        bytes[6], bytes[7],
-        bytes[8], bytes[9],
-        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15],
     )
 }

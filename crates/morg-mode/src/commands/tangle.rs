@@ -6,10 +6,7 @@ use morg_parser::tags::{Tag, TagKind};
 
 use crate::collect;
 
-pub fn run(
-    paths: &[PathBuf],
-    output_dir: Option<&Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(paths: &[PathBuf], output_dir: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
     let parsed = collect::parse_files(paths);
 
     // Pass 1: collect named blocks for noweb resolution
@@ -106,7 +103,9 @@ fn collect_tangle_blocks(
     for block in blocks {
         match block {
             Block::CodeBlock(cb) => {
-                if let Some(target) = tangle_target(&cb.tags, &cb.attributes, source_dir, output_dir) {
+                if let Some(target) =
+                    tangle_target(&cb.tags, &cb.attributes, source_dir, output_dir)
+                {
                     targets.entry(target).or_default().push(TangleBlock {
                         body: cb.body.clone(),
                         source_file: source_file.to_path_buf(),
@@ -115,7 +114,9 @@ fn collect_tangle_blocks(
                 }
             }
             Block::Callout(callout) => {
-                if let Some(target) = tangle_target(&callout.tags, &callout.attributes, source_dir, output_dir) {
+                if let Some(target) =
+                    tangle_target(&callout.tags, &callout.attributes, source_dir, output_dir)
+                {
                     let body = render_callout_content(&callout.content);
                     targets.entry(target).or_default().push(TangleBlock {
                         body,
@@ -123,7 +124,13 @@ fn collect_tangle_blocks(
                         line: callout.span.line,
                     });
                 }
-                collect_tangle_blocks(&callout.content, source_dir, output_dir, source_file, targets);
+                collect_tangle_blocks(
+                    &callout.content,
+                    source_dir,
+                    output_dir,
+                    source_file,
+                    targets,
+                );
             }
             _ => {}
         }
@@ -219,26 +226,29 @@ fn expand_inline_refs(
     let bytes = line.as_bytes();
 
     while pos < bytes.len() {
-        if pos + 2 < bytes.len() && bytes[pos] == b'<' && bytes[pos + 1] == b'<'
-            && let Some(end) = line[pos + 2..].find(">>") {
-                let ref_name = &line[pos + 2..pos + 2 + end];
-                if !ref_name.is_empty() && !ref_name.contains('<') && !ref_name.contains('>') {
-                    if visited.contains(ref_name) {
-                        eprintln!("warning: circular noweb reference <<{ref_name}>>, skipping");
-                        result.push_str(&line[pos..pos + 2 + end + 2]);
-                    } else if let Some(body) = named.get(ref_name) {
-                        visited.insert(ref_name.to_string());
-                        let expanded = expand_noweb_recursive(body, named, visited);
-                        visited.remove(ref_name);
-                        result.push_str(&expanded);
-                    } else {
-                        eprintln!("warning: unresolved noweb reference <<{ref_name}>>");
-                        result.push_str(&line[pos..pos + 2 + end + 2]);
-                    }
-                    pos = pos + 2 + end + 2;
-                    continue;
+        if pos + 2 < bytes.len()
+            && bytes[pos] == b'<'
+            && bytes[pos + 1] == b'<'
+            && let Some(end) = line[pos + 2..].find(">>")
+        {
+            let ref_name = &line[pos + 2..pos + 2 + end];
+            if !ref_name.is_empty() && !ref_name.contains('<') && !ref_name.contains('>') {
+                if visited.contains(ref_name) {
+                    eprintln!("warning: circular noweb reference <<{ref_name}>>, skipping");
+                    result.push_str(&line[pos..pos + 2 + end + 2]);
+                } else if let Some(body) = named.get(ref_name) {
+                    visited.insert(ref_name.to_string());
+                    let expanded = expand_noweb_recursive(body, named, visited);
+                    visited.remove(ref_name);
+                    result.push_str(&expanded);
+                } else {
+                    eprintln!("warning: unresolved noweb reference <<{ref_name}>>");
+                    result.push_str(&line[pos..pos + 2 + end + 2]);
                 }
+                pos = pos + 2 + end + 2;
+                continue;
             }
+        }
         result.push(bytes[pos] as char);
         pos += 1;
     }
@@ -304,11 +314,17 @@ mod tests {
     #[test]
     fn test_noweb_indentation() {
         let mut named = HashMap::new();
-        named.insert("body".to_string(), "println!(\"hello\");\nprintln!(\"world\");".to_string());
+        named.insert(
+            "body".to_string(),
+            "println!(\"hello\");\nprintln!(\"world\");".to_string(),
+        );
 
         let input = "fn main() {\n    <<body>>\n}";
         let result = expand_noweb(input, &named);
-        assert_eq!(result, "fn main() {\n    println!(\"hello\");\n    println!(\"world\");\n}");
+        assert_eq!(
+            result,
+            "fn main() {\n    println!(\"hello\");\n    println!(\"world\");\n}"
+        );
     }
 
     #[test]

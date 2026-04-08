@@ -16,15 +16,18 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
     }
 
     if json {
-        let items: Vec<serde_json::Value> = warnings.iter().map(|w| {
-            let (file, lnum) = parse_location(&w.location);
-            serde_json::json!({
-                "file": file,
-                "line": lnum,
-                "severity": w.severity,
-                "message": w.message,
+        let items: Vec<serde_json::Value> = warnings
+            .iter()
+            .map(|w| {
+                let (file, lnum) = parse_location(&w.location);
+                serde_json::json!({
+                    "file": file,
+                    "line": lnum,
+                    "severity": w.severity,
+                    "message": w.message,
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string(&items)?);
         return Ok(());
     }
@@ -35,7 +38,12 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
     }
 
     for w in &warnings {
-        println!("{loc}  [{severity}] {msg}", loc = w.location, severity = w.severity, msg = w.message);
+        println!(
+            "{loc}  [{severity}] {msg}",
+            loc = w.location,
+            severity = w.severity,
+            msg = w.message
+        );
     }
 
     let error_count = warnings.iter().filter(|w| w.severity == "error").count();
@@ -73,16 +81,19 @@ fn lint_block(
         Block::Heading(h) => {
             // Check for heading level jumps (e.g. # → ### skipping ##)
             if let Some(prev) = *prev_heading_level
-                && h.level > prev + 1 {
-                    warnings.push(LintWarning {
-                        location: report::format_location(file, &h.span),
-                        severity: "warn",
-                        message: format!(
-                            "heading level jumps from {} to {} (skipped level {})",
-                            prev, h.level, prev + 1
-                        ),
-                    });
-                }
+                && h.level > prev + 1
+            {
+                warnings.push(LintWarning {
+                    location: report::format_location(file, &h.span),
+                    severity: "warn",
+                    message: format!(
+                        "heading level jumps from {} to {} (skipped level {})",
+                        prev,
+                        h.level,
+                        prev + 1
+                    ),
+                });
+            }
             *prev_heading_level = Some(h.level);
 
             // Check for empty headings
@@ -175,13 +186,15 @@ fn lint_inline_content(
     // Check for broken links (empty URL)
     for seg in &content.segments {
         if let InlineSegment::Link(link) = seg
-            && link.url.is_empty() && link.text.is_empty() {
-                warnings.push(LintWarning {
-                    location: report::format_location(file, span),
-                    severity: "warn",
-                    message: "empty link".to_string(),
-                });
-            }
+            && link.url.is_empty()
+            && link.text.is_empty()
+        {
+            warnings.push(LintWarning {
+                location: report::format_location(file, span),
+                severity: "warn",
+                message: "empty link".to_string(),
+            });
+        }
     }
 }
 

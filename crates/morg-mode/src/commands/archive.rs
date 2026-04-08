@@ -58,7 +58,9 @@ pub fn run(
                 skip_until = None;
             }
 
-            let in_archive = archived_ranges.iter().any(|(s, e)| line_idx >= *s && line_idx < *e);
+            let in_archive = archived_ranges
+                .iter()
+                .any(|(s, e)| line_idx >= *s && line_idx < *e);
             if in_archive {
                 // Find the end of this range and skip to it
                 if let Some((_, end)) = archived_ranges.iter().find(|(s, _)| *s == line_idx) {
@@ -88,7 +90,12 @@ pub fn run(
             );
             for (start, end) in &archived_ranges {
                 let heading_line = lines.get(*start).unwrap_or(&"");
-                println!("  line {}: {} ({} lines)", start + 1, heading_line.trim(), end - start);
+                println!(
+                    "  line {}: {} ({} lines)",
+                    start + 1,
+                    heading_line.trim(),
+                    end - start
+                );
             }
         } else {
             // Append to archive file
@@ -135,11 +142,12 @@ fn find_archived_ranges(blocks: &[Block], lines: &[&str]) -> Vec<(usize, usize)>
 
     for (i, block) in blocks.iter().enumerate() {
         if let Block::Heading(h) = block
-            && is_archived_heading(h, blocks, i) {
-                let start = (h.span.line as usize).saturating_sub(1);
-                let end = find_subtree_end(h.level, blocks, i, lines.len());
-                ranges.push((start, end));
-            }
+            && is_archived_heading(h, blocks, i)
+        {
+            let start = (h.span.line as usize).saturating_sub(1);
+            let end = find_subtree_end(h.level, blocks, i, lines.len());
+            ranges.push((start, end));
+        }
     }
 
     ranges
@@ -149,7 +157,12 @@ fn find_archived_ranges(blocks: &[Block], lines: &[&str]) -> Vec<(usize, usize)>
 /// or a block-level #archive tag in the immediately following blocks.
 fn is_archived_heading(heading: &Heading, blocks: &[Block], heading_idx: usize) -> bool {
     // Check inline tags on the heading itself
-    if heading.content.tags().iter().any(|t| matches!(t.kind, TagKind::Archive)) {
+    if heading
+        .content
+        .tags()
+        .iter()
+        .any(|t| matches!(t.kind, TagKind::Archive))
+    {
         return true;
     }
 
@@ -170,10 +183,11 @@ fn is_archived_heading(heading: &Heading, blocks: &[Block], heading_idx: usize) 
 fn find_subtree_end(level: u8, blocks: &[Block], heading_idx: usize, total_lines: usize) -> usize {
     for block in &blocks[heading_idx + 1..] {
         if let Block::Heading(h) = block
-            && h.level <= level {
-                // This heading is at same or higher level — subtree ends before it
-                return (h.span.line as usize).saturating_sub(1);
-            }
+            && h.level <= level
+        {
+            // This heading is at same or higher level — subtree ends before it
+            return (h.span.line as usize).saturating_sub(1);
+        }
     }
     // No subsequent heading found — subtree extends to EOF
     total_lines

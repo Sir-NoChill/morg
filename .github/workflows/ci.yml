@@ -14,19 +14,19 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
 
   test:
-    name: Test
+    name: Rust Tests
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
@@ -35,7 +35,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -46,27 +46,59 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
+  # Neovim plugin tests using hererocks (isolated LuaJIT environment)
   nvim-plugin-tests:
     name: Neovim Plugin Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true
           version: stable
-      - name: Install Lua dependencies
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Setup Lua test environment (hererocks)
         run: |
           sudo apt-get update
-          sudo apt-get install -y luarocks
-          sudo luarocks install busted
-          sudo luarocks install nlua
+          sudo apt-get install -y libreadline-dev
+          pip install hererocks
+          # Use PUC Lua 5.1 (not LuaJIT) for luarocks itself — LuaJIT hits
+          # a 65536 constant limit parsing the luarocks manifest.
+          # Tests still run under Neovim's LuaJIT via nlua.
+          hererocks .lua-env --lua 5.1 --luarocks latest
+          .lua-env/bin/luarocks install busted
+          .lua-env/bin/luarocks install nlua
+          .lua-env/bin/luarocks install luafilesystem
       - name: Run plugin tests
         working-directory: morg-mode-nvim
-        run: busted .
+        run: |
+          export PATH="$GITHUB_WORKSPACE/.lua-env/bin:$PATH"
+          eval "$($GITHUB_WORKSPACE/.lua-env/bin/luarocks path)"
+          busted .
+
+  # Nix-based CI (reproducible, uses flake devShell)
+  nix:
+    name: Nix Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixpkgs-unstable
+      - uses: cachix/cachix-action@v15
+        with:
+          name: nix-community
+          skipPush: true
+      - name: Rust tests (nix)
+        run: nix develop --command cargo test --workspace
+      - name: Neovim plugin tests (nix)
+        run: |
+          nix develop .#lua-tests --command bash -c "cd morg-mode-nvim && busted ."

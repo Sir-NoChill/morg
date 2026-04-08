@@ -27,7 +27,11 @@ pub fn run(paths: &[PathBuf], columns_str: &str) -> Result<(), Box<dyn std::erro
         .enumerate()
         .map(|(i, col)| {
             let header_len = col.len();
-            let max_data = rows.iter().map(|r| r.get(i).map(|s| s.len()).unwrap_or(0)).max().unwrap_or(0);
+            let max_data = rows
+                .iter()
+                .map(|r| r.get(i).map(|s| s.len()).unwrap_or(0))
+                .max()
+                .unwrap_or(0);
             header_len.max(max_data).max(4)
         })
         .collect();
@@ -75,11 +79,18 @@ fn collect_heading_rows(
     for block in blocks {
         if let Block::Heading(h) = block {
             // Skip archived headings
-            if h.content.tags().iter().any(|t| matches!(t.kind, TagKind::Archive)) {
+            if h.content
+                .tags()
+                .iter()
+                .any(|t| matches!(t.kind, TagKind::Archive))
+            {
                 continue;
             }
 
-            let row: Vec<String> = columns.iter().map(|col| extract_column(h, file, col)).collect();
+            let row: Vec<String> = columns
+                .iter()
+                .map(|col| extract_column(h, file, col))
+                .collect();
 
             // Only add if there's something interesting (not just an item name)
             let has_data = row.iter().skip(1).any(|v| !v.is_empty());
@@ -112,9 +123,10 @@ fn extract_column(h: &Heading, file: &std::path::Path, col: &str) -> String {
             }
             // Check property drawer
             if let Some(ref props) = h.properties
-                && let Some(p) = props.entries.get("priority") {
-                    return p.clone();
-                }
+                && let Some(p) = props.entries.get("priority")
+            {
+                return p.clone();
+            }
             String::new()
         }
         "effort" => {
@@ -124,9 +136,10 @@ fn extract_column(h: &Heading, file: &std::path::Path, col: &str) -> String {
                 }
             }
             if let Some(ref props) = h.properties
-                && let Some(e) = props.entries.get("effort") {
-                    return e.clone();
-                }
+                && let Some(e) = props.entries.get("effort")
+            {
+                return e.clone();
+            }
             String::new()
         }
         "deadline" => {
@@ -149,9 +162,10 @@ fn extract_column(h: &Heading, file: &std::path::Path, col: &str) -> String {
         other => {
             // Try property drawer
             if let Some(ref props) = h.properties
-                && let Some(v) = props.entries.get(other) {
-                    return v.clone();
-                }
+                && let Some(v) = props.entries.get(other)
+            {
+                return v.clone();
+            }
             String::new()
         }
     }

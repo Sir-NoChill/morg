@@ -20,6 +20,7 @@ macro_rules! define_keywords {
 
         impl Keyword {
             /// Look up a keyword by its string form. Returns `None` for unknown tags.
+            #[allow(clippy::should_implement_trait)]
             pub fn from_str(s: &str) -> Option<Self> {
                 match s {
                     $($string => Some(Self::$name),)*
@@ -94,11 +95,14 @@ pub struct Spanned {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // ---- Block structure ----
-
     /// `# ` through `###### ` — level 1..=6
     Heading { level: u8 },
     /// Opening ``` or ~~~ with optional info string
-    FencedCodeOpen { info: String, fence_char: char, fence_len: usize },
+    FencedCodeOpen {
+        info: String,
+        fence_char: char,
+        fence_len: usize,
+    },
     /// Closing ``` or ~~~
     FencedCodeClose { fence_char: char, fence_len: usize },
     /// `---` frontmatter delimiter
@@ -110,7 +114,10 @@ pub enum Token {
     /// A line that starts with `|`
     TableRow,
     /// `> [!type]` with optional `[metadata]`
-    CalloutStart { kind: String, metadata: Option<String> },
+    CalloutStart {
+        kind: String,
+        metadata: Option<String>,
+    },
     /// `> ` continuation of a blockquote
     BlockquoteContinuation,
     /// `<tag ...>` opening HTML tag
@@ -131,14 +138,12 @@ pub enum Token {
     BlockCommentClose,
 
     // ---- Tags ----
-
     /// A known `#keyword` tag
     Tag(Keyword),
     /// An unknown `#name` tag
     UnknownTag { name: String },
 
     // ---- Inline content ----
-
     /// Plain text (no markup)
     Text(String),
     /// `**` bold delimiter (open or close)
@@ -164,14 +169,12 @@ pub enum Token {
     TagArg(String),
 
     // ---- Raw content ----
-
     /// A line of raw text inside a code block or HTML block
     RawLine(String),
     /// `key = value` inside a property drawer
     PropertyLine { key: String, value: String },
 
     // ---- Control ----
-
     /// End of a line
     Newline,
     /// Empty / whitespace-only line

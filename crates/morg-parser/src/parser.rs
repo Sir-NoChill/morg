@@ -35,7 +35,10 @@ pub fn parse_document(source: &str) -> ParseResult {
     }
 
     ParseResult {
-        document: Document { frontmatter, children },
+        document: Document {
+            frontmatter,
+            children,
+        },
         errors,
     }
 }
@@ -133,12 +136,13 @@ fn parse_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Option<Bloc
                 span,
             }))
         }
-        Token::Tag(_) | Token::UnknownTag { .. } => {
-            Some(parse_block_tag(lex))
-        }
+        Token::Tag(_) | Token::UnknownTag { .. } => Some(parse_block_tag(lex)),
         Token::Text(_) | Token::RawLine(_) => parse_paragraph(lex),
-        Token::PropertiesOpen | Token::PropertiesClose | Token::BlockCommentClose
-        | Token::HtmlClose { .. } | Token::BlockquoteContinuation => {
+        Token::PropertiesOpen
+        | Token::PropertiesClose
+        | Token::BlockCommentClose
+        | Token::HtmlClose { .. }
+        | Token::BlockquoteContinuation => {
             // Stray structural tokens — treat as text paragraph
             parse_paragraph(lex)
         }
@@ -243,8 +247,15 @@ fn parse_code_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block 
     let open_span = tok.span;
 
     let (fence_char, fence_len, info_string) = match &tok.kind {
-        Token::FencedCodeOpen { info, fence_char, fence_len } => (*fence_char, *fence_len, info.clone()),
-        Token::FencedCodeClose { fence_char, fence_len } => (*fence_char, *fence_len, String::new()),
+        Token::FencedCodeOpen {
+            info,
+            fence_char,
+            fence_len,
+        } => (*fence_char, *fence_len, info.clone()),
+        Token::FencedCodeClose {
+            fence_char,
+            fence_len,
+        } => (*fence_char, *fence_len, String::new()),
         _ => unreachable!(),
     };
     skip_newline(lex);
@@ -299,7 +310,8 @@ fn parse_code_info(info: &str, span: Span) -> (Option<String>, Vec<Tag>, HashMap
     if parts.is_empty() {
         return (None, Vec::new(), HashMap::new());
     }
-    let lang = parts.first()
+    let lang = parts
+        .first()
         .filter(|p| !p.starts_with('#') && !p.contains('='))
         .map(|p| p.to_string());
     let meta_start = if lang.is_some() { 1 } else { 0 };
@@ -351,10 +363,10 @@ fn parse_callout(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block {
         if let Some(after_type) = rest.find(']') {
             let mut after = &rest[after_type + 1..];
             let trimmed_after = after.trim_start();
-            if trimmed_after.starts_with('[') {
-                if let Some(meta_end) = trimmed_after.find(']') {
-                    after = &trimmed_after[meta_end + 1..];
-                }
+            if trimmed_after.starts_with('[')
+                && let Some(meta_end) = trimmed_after.find(']')
+            {
+                after = &trimmed_after[meta_end + 1..];
             }
             let after = after.trim();
             if !after.is_empty() {
@@ -399,7 +411,13 @@ fn parse_callout(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block {
 fn parse_list(lex: &mut Lexer<'_>) -> Block {
     let first_span = lex.peek().span;
     let list_kind = match &lex.peek().kind {
-        Token::ListMarker { ordered, .. } => if *ordered { ListKind::Ordered } else { ListKind::Unordered },
+        Token::ListMarker { ordered, .. } => {
+            if *ordered {
+                ListKind::Ordered
+            } else {
+                ListKind::Unordered
+            }
+        }
         _ => unreachable!(),
     };
 
@@ -501,19 +519,20 @@ fn nest_list_items(flat: Vec<ListItem>) -> Vec<ListItem> {
 
 fn parse_list_item_content(text: &str) -> (Option<Checkbox>, &str) {
     let trimmed = text.trim_start();
-    let after_marker = if trimmed.starts_with("- ") || trimmed.starts_with("+ ") || trimmed.starts_with("* ") {
-        &trimmed[2..]
-    } else {
-        let digits_end = trimmed.find(|c: char| !c.is_ascii_digit()).unwrap_or(0);
-        if trimmed[digits_end..].starts_with(". ") {
-            &trimmed[digits_end + 2..]
+    let after_marker =
+        if trimmed.starts_with("- ") || trimmed.starts_with("+ ") || trimmed.starts_with("* ") {
+            &trimmed[2..]
         } else {
-            trimmed
-        }
-    };
+            let digits_end = trimmed.find(|c: char| !c.is_ascii_digit()).unwrap_or(0);
+            if trimmed[digits_end..].starts_with(". ") {
+                &trimmed[digits_end + 2..]
+            } else {
+                trimmed
+            }
+        };
 
-    if after_marker.starts_with("[ ] ") {
-        (Some(Checkbox::Unchecked), &after_marker[4..])
+    if let Some(after) = after_marker.strip_prefix("[ ] ") {
+        (Some(Checkbox::Unchecked), after)
     } else if after_marker.starts_with("[x] ") || after_marker.starts_with("[X] ") {
         (Some(Checkbox::Checked), &after_marker[4..])
     } else {
@@ -577,7 +596,8 @@ fn parse_table_row_content(line: &str, span: Span) -> Vec<InlineContent> {
     let trimmed = line.trim();
     let inner = trimmed.strip_prefix('|').unwrap_or(trimmed);
     let inner = inner.strip_suffix('|').unwrap_or(inner);
-    inner.split('|')
+    inner
+        .split('|')
         .map(|cell| build_inline_content(cell.trim(), span))
         .collect()
 }
@@ -590,12 +610,20 @@ fn try_parse_separator(line: &str) -> Option<Vec<Alignment>> {
     let mut alignments = Vec::new();
     for cell in cells {
         let cell = cell.trim();
-        if cell.is_empty() { return None; }
+        if cell.is_empty() {
+            return None;
+        }
         let left = cell.starts_with(':');
         let right = cell.ends_with(':');
         let middle = if left { &cell[1..] } else { cell };
-        let middle = if right { &middle[..middle.len() - 1] } else { middle };
-        if middle.is_empty() || !middle.chars().all(|c| c == '-') { return None; }
+        let middle = if right {
+            &middle[..middle.len() - 1]
+        } else {
+            middle
+        };
+        if middle.is_empty() || !middle.chars().all(|c| c == '-') {
+            return None;
+        }
         alignments.push(match (left, right) {
             (true, true) => Alignment::Center,
             (true, false) => Alignment::Left,
@@ -660,9 +688,22 @@ fn parse_html_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block 
 }
 
 fn is_void_element(tag: &str) -> bool {
-    matches!(tag,
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input"
-        | "link" | "meta" | "param" | "source" | "track" | "wbr"
+    matches!(
+        tag,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
     )
 }
 
@@ -674,7 +715,12 @@ fn parse_line_comment(lex: &mut Lexer<'_>) -> Block {
     let span = lex.advance().span; // LineComment
     let raw = consume_raw_line(lex);
     skip_newline(lex);
-    let text = raw.trim_start().strip_prefix("//").unwrap_or(&raw).trim().to_string();
+    let text = raw
+        .trim_start()
+        .strip_prefix("//")
+        .unwrap_or(&raw)
+        .trim()
+        .to_string();
     Block::Comment(Comment { text, span })
 }
 
@@ -683,11 +729,20 @@ fn parse_block_comment(lex: &mut Lexer<'_>) -> Block {
     let first_raw = consume_raw_line(lex);
     skip_newline(lex);
 
-    let mut text_lines = vec![first_raw.trim_start().strip_prefix("/*").unwrap_or("").trim().to_string()];
+    let mut text_lines = vec![
+        first_raw
+            .trim_start()
+            .strip_prefix("/*")
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+    ];
     let mut last_span = open_span;
 
     loop {
-        if lex.is_eof() { break; }
+        if lex.is_eof() {
+            break;
+        }
         if matches!(lex.peek().kind, Token::BlockCommentClose) {
             last_span = lex.advance().span;
             let raw = consume_raw_line(lex);
@@ -728,7 +783,11 @@ fn parse_footnote_def(lex: &mut Lexer<'_>) -> Block {
     let content_text = raw.trim().strip_prefix(&prefix).unwrap_or("");
     let content = build_inline_content(content_text, span);
 
-    Block::FootnoteDefinition(FootnoteDefinition { label, content, span })
+    Block::FootnoteDefinition(FootnoteDefinition {
+        label,
+        content,
+        span,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -769,17 +828,19 @@ fn parse_paragraph(lex: &mut Lexer<'_>) -> Option<Block> {
     let mut text_lines: Vec<String> = Vec::new();
     let mut last_span = first_span;
 
-    loop {
-        match &lex.peek().kind {
-            Token::Text(_) | Token::RawLine(_) | Token::BlockquoteContinuation
-            | Token::HtmlClose { .. } | Token::PropertiesOpen | Token::PropertiesClose
-            | Token::BlockCommentClose => {
-                last_span = lex.peek().span;
-                let raw = extract_raw_line(lex);
-                text_lines.push(raw);
-            }
-            _ => break,
-        }
+    while matches!(
+        &lex.peek().kind,
+        Token::Text(_)
+            | Token::RawLine(_)
+            | Token::BlockquoteContinuation
+            | Token::HtmlClose { .. }
+            | Token::PropertiesOpen
+            | Token::PropertiesClose
+            | Token::BlockCommentClose
+    ) {
+        last_span = lex.peek().span;
+        let raw = extract_raw_line(lex);
+        text_lines.push(raw);
     }
 
     if text_lines.is_empty() {
@@ -838,7 +899,12 @@ fn tokens_to_inline_content(tokens: &[crate::tokens::Spanned], base_span: Span) 
                 segments.push(InlineSegment::Strikethrough(inner));
                 i += inner_end + 1;
             }
-            Token::Link { text, url, title, meta } => {
+            Token::Link {
+                text,
+                url,
+                title,
+                meta,
+            } => {
                 let (link_tags, attrs) = match meta.as_deref() {
                     Some(m) => parse_metadata(m, base_span),
                     None => (Vec::new(), HashMap::new()),
@@ -861,8 +927,12 @@ fn tokens_to_inline_content(tokens: &[crate::tokens::Spanned], base_span: Span) 
                     if let Token::TagArg(a) = &tokens[i + 1].kind {
                         i += 1;
                         Some(a.as_str())
-                    } else { None }
-                } else { None };
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
                 let tag = tags::parse_tag(kw.as_str(), arg, base_span);
                 segments.push(InlineSegment::Tag(tag));
                 i += 1;
@@ -872,8 +942,12 @@ fn tokens_to_inline_content(tokens: &[crate::tokens::Spanned], base_span: Span) 
                     if let Token::TagArg(a) = &tokens[i + 1].kind {
                         i += 1;
                         Some(a.as_str())
-                    } else { None }
-                } else { None };
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
                 let tag = tags::parse_tag(name, arg, base_span);
                 segments.push(InlineSegment::Tag(tag));
                 i += 1;
@@ -971,7 +1045,10 @@ mod tests {
         let doc = &result.document;
         assert!(doc.frontmatter.is_some());
 
-        let has_heading = doc.children.iter().any(|b| matches!(b, Block::Heading(h) if h.level == 1));
+        let has_heading = doc
+            .children
+            .iter()
+            .any(|b| matches!(b, Block::Heading(h) if h.level == 1));
         assert!(has_heading, "should have heading");
 
         let code_block = doc.children.iter().find_map(|b| match b {
@@ -982,11 +1059,20 @@ mod tests {
         let cb = code_block.unwrap();
         assert_eq!(cb.lang.as_deref(), Some("rust"));
         assert!(cb.tags.iter().any(|t| matches!(t.kind, TagKind::Tangle)));
-        assert_eq!(cb.attributes.get("file").map(|s| s.as_str()), Some("main.rs"));
+        assert_eq!(
+            cb.attributes.get("file").map(|s| s.as_str()),
+            Some("main.rs")
+        );
         assert_eq!(cb.body, "fn main() {}");
 
         let has_deadline = doc.children.iter().any(|b| {
-            matches!(b, Block::BlockTag(Tag { kind: TagKind::Deadline { .. }, .. }))
+            matches!(
+                b,
+                Block::BlockTag(Tag {
+                    kind: TagKind::Deadline { .. },
+                    ..
+                })
+            )
         });
         assert!(has_deadline, "should have deadline");
     }
@@ -997,10 +1083,15 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let para = result.document.children.iter().find_map(|b| match b {
-            Block::Paragraph(p) => Some(p),
-            _ => None,
-        }).unwrap();
+        let para = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::Paragraph(p) => Some(p),
+                _ => None,
+            })
+            .unwrap();
 
         let tags: Vec<_> = para.content.tags();
         assert_eq!(tags.len(), 1);
@@ -1013,13 +1104,28 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let para = result.document.children.iter().find_map(|b| match b {
-            Block::Paragraph(p) => Some(p),
-            _ => None,
-        }).unwrap();
+        let para = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::Paragraph(p) => Some(p),
+                _ => None,
+            })
+            .unwrap();
 
-        assert!(para.content.segments.iter().any(|s| matches!(s, InlineSegment::Bold(_))));
-        assert!(para.content.segments.iter().any(|s| matches!(s, InlineSegment::Italic(_))));
+        assert!(
+            para.content
+                .segments
+                .iter()
+                .any(|s| matches!(s, InlineSegment::Bold(_)))
+        );
+        assert!(
+            para.content
+                .segments
+                .iter()
+                .any(|s| matches!(s, InlineSegment::Italic(_)))
+        );
     }
 
     #[test]
@@ -1028,12 +1134,22 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let para = result.document.children.iter().find_map(|b| match b {
-            Block::Paragraph(p) => Some(p),
-            _ => None,
-        }).unwrap();
+        let para = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::Paragraph(p) => Some(p),
+                _ => None,
+            })
+            .unwrap();
 
-        assert!(para.content.segments.iter().any(|s| matches!(s, InlineSegment::Link(_))));
+        assert!(
+            para.content
+                .segments
+                .iter()
+                .any(|s| matches!(s, InlineSegment::Link(_)))
+        );
     }
 
     #[test]
@@ -1089,10 +1205,15 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
 
-        let h = result.document.children.iter().find_map(|b| match b {
-            Block::Heading(h) => Some(h),
-            _ => None,
-        }).unwrap();
+        let h = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::Heading(h) => Some(h),
+                _ => None,
+            })
+            .unwrap();
         assert!(h.properties.is_some());
         let props = h.properties.as_ref().unwrap();
         assert_eq!(props.entries.get("id").map(|s| s.as_str()), Some("abc-123"));
@@ -1104,8 +1225,14 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let tags: Vec<_> = result.document.children.iter()
-            .filter_map(|b| match b { Block::BlockTag(t) => Some(t), _ => None })
+        let tags: Vec<_> = result
+            .document
+            .children
+            .iter()
+            .filter_map(|b| match b {
+                Block::BlockTag(t) => Some(t),
+                _ => None,
+            })
             .collect();
         assert_eq!(tags.len(), 3);
         assert!(matches!(tags[0].kind, TagKind::ClockIn { .. }));
@@ -1119,7 +1246,11 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let has_comment = result.document.children.iter().any(|b| matches!(b, Block::Comment(_)));
+        let has_comment = result
+            .document
+            .children
+            .iter()
+            .any(|b| matches!(b, Block::Comment(_)));
         assert!(has_comment);
     }
 
@@ -1129,7 +1260,11 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let has_hr = result.document.children.iter().any(|b| matches!(b, Block::HorizontalRule(_)));
+        let has_hr = result
+            .document
+            .children
+            .iter()
+            .any(|b| matches!(b, Block::HorizontalRule(_)));
         assert!(has_hr);
     }
 
@@ -1139,7 +1274,11 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let has_fn = result.document.children.iter().any(|b| matches!(b, Block::FootnoteDefinition(_)));
+        let has_fn = result
+            .document
+            .children
+            .iter()
+            .any(|b| matches!(b, Block::FootnoteDefinition(_)));
         assert!(has_fn);
     }
 
@@ -1166,21 +1305,31 @@ mod tests {
 
     #[test]
     fn test_v2_nested_list() {
-        let src = "- Parent one\n  - Child A\n  - Child B\n- Parent two\n  - Child C\n    - Grandchild\n";
+        let src =
+            "- Parent one\n  - Child A\n  - Child B\n- Parent two\n  - Child C\n    - Grandchild\n";
         let result = parse_document(src);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
 
-        let list = result.document.children.iter().find_map(|b| match b {
-            Block::List(l) => Some(l),
-            _ => None,
-        }).expect("should have a list");
+        let list = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::List(l) => Some(l),
+                _ => None,
+            })
+            .expect("should have a list");
 
         // Two top-level items
         assert_eq!(list.items.len(), 2, "should have 2 top-level items");
 
         // First parent has 2 children
         assert_eq!(list.items[0].content.plain_text(), "Parent one");
-        assert_eq!(list.items[0].children.len(), 1, "parent one should have 1 child block (nested list)");
+        assert_eq!(
+            list.items[0].children.len(),
+            1,
+            "parent one should have 1 child block (nested list)"
+        );
         if let Block::List(child_list) = &list.items[0].children[0] {
             assert_eq!(child_list.items.len(), 2, "child list should have 2 items");
             assert_eq!(child_list.items[0].content.plain_text(), "Child A");
@@ -1213,10 +1362,15 @@ mod tests {
         let result = parse_document(src);
         assert!(result.errors.is_empty());
 
-        let list = result.document.children.iter().find_map(|b| match b {
-            Block::List(l) => Some(l),
-            _ => None,
-        }).unwrap();
+        let list = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::List(l) => Some(l),
+                _ => None,
+            })
+            .unwrap();
 
         assert_eq!(list.items.len(), 1);
         assert_eq!(list.items[0].checkbox, Some(Checkbox::Unchecked));

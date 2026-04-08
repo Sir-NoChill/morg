@@ -76,10 +76,8 @@ mod tests {
 
     #[test]
     fn test_deep_merge_nested() {
-        let mut base: Value =
-            serde_yaml::from_str("meta:\n  author: Alice\n  version: 1").unwrap();
-        let overlay: Value =
-            serde_yaml::from_str("meta:\n  version: 2\n  license: MIT").unwrap();
+        let mut base: Value = serde_yaml::from_str("meta:\n  author: Alice\n  version: 1").unwrap();
+        let overlay: Value = serde_yaml::from_str("meta:\n  version: 2\n  license: MIT").unwrap();
         deep_merge(&mut base, &overlay);
 
         assert_eq!(base["meta"]["author"], Value::String("Alice".into()));

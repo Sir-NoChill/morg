@@ -87,7 +87,6 @@ impl Default for DiaryConfig {
     }
 }
 
-
 impl Config {
     /// Resolved diary directory (diary.directory or root/diary).
     pub fn diary_dir(&self) -> PathBuf {
@@ -269,12 +268,18 @@ templates_file = "/home/user/.config/morg/capture.yaml"
         let cfg: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.root, PathBuf::from("/home/user/notes"));
         assert_eq!(cfg.diary.directory, Some(PathBuf::from("/home/user/diary")));
-        assert_eq!(cfg.diary.template, Some(PathBuf::from("/home/user/diary/my_template.md")));
+        assert_eq!(
+            cfg.diary.template,
+            Some(PathBuf::from("/home/user/diary/my_template.md"))
+        );
         assert_eq!(cfg.diary.today_file, "current.md");
         assert_eq!(cfg.diary.archive_pattern, "{year}-{month}");
         assert_eq!(cfg.diary.archive_filename, "day-{day}.md");
         assert!(!cfg.diary.carry_todos);
-        assert_eq!(cfg.capture.templates_file, Some(PathBuf::from("/home/user/.config/morg/capture.yaml")));
+        assert_eq!(
+            cfg.capture.templates_file,
+            Some(PathBuf::from("/home/user/.config/morg/capture.yaml"))
+        );
     }
 
     #[test]

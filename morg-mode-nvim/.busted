@@ -1,8 +1,36 @@
+-- Find nlua: prefer NLUA_PATH env, then search PATH, then fallback
+local function find_nlua()
+  local env = os.getenv("NLUA_PATH")
+  if env then return env end
+
+  -- Search PATH for nlua
+  local handle = io.popen("which nlua 2>/dev/null")
+  if handle then
+    local result = handle:read("*l")
+    handle:close()
+    if result and result ~= "" then return result end
+  end
+
+  -- Fallback to common locations
+  local home = os.getenv("HOME") or ""
+  local candidates = {
+    home .. "/.luarocks/bin/nlua",
+    "/usr/bin/nlua",
+    "/usr/local/bin/nlua",
+  }
+  for _, path in ipairs(candidates) do
+    local f = io.open(path, "r")
+    if f then f:close(); return path end
+  end
+
+  return "nlua" -- hope it's on PATH
+end
+
 return {
   _all = {
     coverage = false,
     lpath = "lua/?.lua;lua/?/init.lua;spec/?.lua",
-    lua = os.getenv("HOME") .. "/.luarocks/bin/nlua",
+    lua = find_nlua(),
   },
   default = {
     helper = "./spec/minimal_init.lua",

@@ -20,7 +20,10 @@ pub fn resolve_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
         } else if path.is_dir() {
             collect_markdown_files(path, &mut files);
         } else {
-            eprintln!("warning: skipping {}: not a file or directory", path.display());
+            eprintln!(
+                "warning: skipping {}: not a file or directory",
+                path.display()
+            );
         }
     }
     files.sort();
@@ -96,9 +99,11 @@ pub fn file_tags(document: &Document) -> Vec<String> {
                     .iter()
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect(),
-                Some(serde_yaml::Value::String(s)) => {
-                    s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
-                }
+                Some(serde_yaml::Value::String(s)) => s
+                    .split(',')
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect(),
                 _ => Vec::new(),
             }
         }
@@ -115,26 +120,36 @@ pub struct TodoSequence {
 /// Extract todo_sequences from frontmatter.
 /// Format: `todo_sequences: [["TODO", "NEXT", "WAIT", "|", "DONE", "CANCELLED"]]`
 pub fn todo_sequences(document: &Document) -> Vec<TodoSequence> {
-    let Some(ref fm) = document.frontmatter else { return Vec::new() };
-    let serde_yaml::Value::Mapping(map) = &fm.data else { return Vec::new() };
+    let Some(ref fm) = document.frontmatter else {
+        return Vec::new();
+    };
+    let serde_yaml::Value::Mapping(map) = &fm.data else {
+        return Vec::new();
+    };
 
     let key = serde_yaml::Value::String("todo_sequences".to_string());
-    let Some(serde_yaml::Value::Sequence(seqs)) = map.get(&key) else { return Vec::new() };
+    let Some(serde_yaml::Value::Sequence(seqs)) = map.get(&key) else {
+        return Vec::new();
+    };
 
-    seqs.iter().filter_map(|seq| {
-        let serde_yaml::Value::Sequence(items) = seq else { return None };
-        let mut states = Vec::new();
-        let mut past_separator = false;
-        for item in items {
-            let s = item.as_str()?;
-            if s == "|" {
-                past_separator = true;
-                continue;
+    seqs.iter()
+        .filter_map(|seq| {
+            let serde_yaml::Value::Sequence(items) = seq else {
+                return None;
+            };
+            let mut states = Vec::new();
+            let mut past_separator = false;
+            for item in items {
+                let s = item.as_str()?;
+                if s == "|" {
+                    past_separator = true;
+                    continue;
+                }
+                states.push((s.to_uppercase(), past_separator));
             }
-            states.push((s.to_uppercase(), past_separator));
-        }
-        Some(TodoSequence { states })
-    }).collect()
+            Some(TodoSequence { states })
+        })
+        .collect()
 }
 
 /// Check if a tag name matches a custom todo sequence state.
@@ -186,7 +201,10 @@ fn walk_block_with_inheritance<'a>(
     match block {
         Block::Heading(h) => {
             // Pop headings from stack that are same level or deeper
-            while heading_stack.last().is_some_and(|(lvl, _, _)| *lvl >= h.level) {
+            while heading_stack
+                .last()
+                .is_some_and(|(lvl, _, _)| *lvl >= h.level)
+            {
                 heading_stack.pop();
             }
 
@@ -201,7 +219,11 @@ fn walk_block_with_inheritance<'a>(
                 })
                 .collect();
 
-            let is_archived = h.content.tags().iter().any(|t| matches!(t.kind, TagKind::Archive));
+            let is_archived = h
+                .content
+                .tags()
+                .iter()
+                .any(|t| matches!(t.kind, TagKind::Archive));
 
             heading_stack.push((h.level, own_tags, is_archived));
             *current_heading = Some(h);
@@ -254,7 +276,14 @@ fn walk_block_with_inheritance<'a>(
         }
         Block::Callout(c) => {
             for child in &c.content {
-                walk_block_with_inheritance(file, child, current_heading, heading_stack, file_tags, visitor);
+                walk_block_with_inheritance(
+                    file,
+                    child,
+                    current_heading,
+                    heading_stack,
+                    file_tags,
+                    visitor,
+                );
             }
         }
         Block::Table(t) => {
@@ -297,12 +326,22 @@ fn walk_block_with_inheritance<'a>(
                     });
                 }
                 for child in &item.children {
-                    walk_block_with_inheritance(file, child, current_heading, heading_stack, file_tags, visitor);
+                    walk_block_with_inheritance(
+                        file,
+                        child,
+                        current_heading,
+                        heading_stack,
+                        file_tags,
+                        visitor,
+                    );
                 }
             }
         }
-        Block::BlankLine(_) | Block::HtmlBlock(_) | Block::HorizontalRule(_)
-        | Block::Comment(_) | Block::FootnoteDefinition(_) => {}
+        Block::BlankLine(_)
+        | Block::HtmlBlock(_)
+        | Block::HorizontalRule(_)
+        | Block::Comment(_)
+        | Block::FootnoteDefinition(_) => {}
     }
 }
 
