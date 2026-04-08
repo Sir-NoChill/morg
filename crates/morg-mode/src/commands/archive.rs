@@ -134,13 +134,12 @@ fn find_archived_ranges(blocks: &[Block], lines: &[&str]) -> Vec<(usize, usize)>
     let mut ranges = Vec::new();
 
     for (i, block) in blocks.iter().enumerate() {
-        if let Block::Heading(h) = block {
-            if is_archived_heading(h, blocks, i) {
+        if let Block::Heading(h) = block
+            && is_archived_heading(h, blocks, i) {
                 let start = (h.span.line as usize).saturating_sub(1);
                 let end = find_subtree_end(h.level, blocks, i, lines.len());
                 ranges.push((start, end));
             }
-        }
     }
 
     ranges
@@ -170,12 +169,11 @@ fn is_archived_heading(heading: &Heading, blocks: &[Block], heading_idx: usize) 
 /// The subtree extends until the next heading at the same or higher level, or EOF.
 fn find_subtree_end(level: u8, blocks: &[Block], heading_idx: usize, total_lines: usize) -> usize {
     for block in &blocks[heading_idx + 1..] {
-        if let Block::Heading(h) = block {
-            if h.level <= level {
+        if let Block::Heading(h) = block
+            && h.level <= level {
                 // This heading is at same or higher level — subtree ends before it
                 return (h.span.line as usize).saturating_sub(1);
             }
-        }
     }
     // No subsequent heading found — subtree extends to EOF
     total_lines

@@ -107,7 +107,7 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                 "line": lnum,
                 "heading": e.heading,
                 "priority": e.priority.map(|p| p.to_string()),
-                "effort": e.effort.map(|m| report::format_duration_minutes(m)),
+                "effort": e.effort.map(report::format_duration_minutes),
                 "tags": e.inherited_tags,
             })
         }).collect();

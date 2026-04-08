@@ -219,8 +219,8 @@ fn expand_inline_refs(
     let bytes = line.as_bytes();
 
     while pos < bytes.len() {
-        if pos + 2 < bytes.len() && bytes[pos] == b'<' && bytes[pos + 1] == b'<' {
-            if let Some(end) = line[pos + 2..].find(">>") {
+        if pos + 2 < bytes.len() && bytes[pos] == b'<' && bytes[pos + 1] == b'<'
+            && let Some(end) = line[pos + 2..].find(">>") {
                 let ref_name = &line[pos + 2..pos + 2 + end];
                 if !ref_name.is_empty() && !ref_name.contains('<') && !ref_name.contains('>') {
                     if visited.contains(ref_name) {
@@ -239,7 +239,6 @@ fn expand_inline_refs(
                     continue;
                 }
             }
-        }
         result.push(bytes[pos] as char);
         pos += 1;
     }

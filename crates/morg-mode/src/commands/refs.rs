@@ -61,14 +61,13 @@ fn collect_ids_and_refs(
         match block {
             Block::Heading(h) => {
                 // Check for id in property drawer
-                if let Some(ref props) = h.properties {
-                    if let Some(id) = props.entries.get("id") {
+                if let Some(ref props) = h.properties
+                    && let Some(id) = props.entries.get("id") {
                         id_index.insert(
                             id.clone(),
                             (file.to_path_buf(), h.content.plain_text()),
                         );
                     }
-                }
                 // Check for id: links in heading content
                 collect_link_refs(&h.content.segments, file, h.span.line, id_refs);
             }

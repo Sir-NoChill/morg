@@ -72,8 +72,8 @@ fn lint_block(
     match block {
         Block::Heading(h) => {
             // Check for heading level jumps (e.g. # → ### skipping ##)
-            if let Some(prev) = *prev_heading_level {
-                if h.level > prev + 1 {
+            if let Some(prev) = *prev_heading_level
+                && h.level > prev + 1 {
                     warnings.push(LintWarning {
                         location: report::format_location(file, &h.span),
                         severity: "warn",
@@ -83,7 +83,6 @@ fn lint_block(
                         ),
                     });
                 }
-            }
             *prev_heading_level = Some(h.level);
 
             // Check for empty headings
@@ -175,15 +174,14 @@ fn lint_inline_content(
 
     // Check for broken links (empty URL)
     for seg in &content.segments {
-        if let InlineSegment::Link(link) = seg {
-            if link.url.is_empty() && link.text.is_empty() {
+        if let InlineSegment::Link(link) = seg
+            && link.url.is_empty() && link.text.is_empty() {
                 warnings.push(LintWarning {
                     location: report::format_location(file, span),
                     severity: "warn",
                     message: "empty link".to_string(),
                 });
             }
-        }
     }
 }
 

@@ -111,11 +111,10 @@ fn extract_column(h: &Heading, file: &std::path::Path, col: &str) -> String {
                 }
             }
             // Check property drawer
-            if let Some(ref props) = h.properties {
-                if let Some(p) = props.entries.get("priority") {
+            if let Some(ref props) = h.properties
+                && let Some(p) = props.entries.get("priority") {
                     return p.clone();
                 }
-            }
             String::new()
         }
         "effort" => {
@@ -124,11 +123,10 @@ fn extract_column(h: &Heading, file: &std::path::Path, col: &str) -> String {
                     return report::format_duration_minutes(*minutes);
                 }
             }
-            if let Some(ref props) = h.properties {
-                if let Some(e) = props.entries.get("effort") {
+            if let Some(ref props) = h.properties
+                && let Some(e) = props.entries.get("effort") {
                     return e.clone();
                 }
-            }
             String::new()
         }
         "deadline" => {
@@ -150,11 +148,10 @@ fn extract_column(h: &Heading, file: &std::path::Path, col: &str) -> String {
         "location" => report::format_location(file, &h.span),
         other => {
             // Try property drawer
-            if let Some(ref props) = h.properties {
-                if let Some(v) = props.entries.get(other) {
+            if let Some(ref props) = h.properties
+                && let Some(v) = props.entries.get(other) {
                     return v.clone();
                 }
-            }
             String::new()
         }
     }

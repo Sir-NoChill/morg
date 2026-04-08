@@ -125,15 +125,15 @@ fn build_event(
     event.description(&format!("Source: {location}"));
     match ts {
         Timestamp::Date(d) => {
-            event.add_property("DTSTART;VALUE=DATE", &d.format("%Y%m%d").to_string());
+            event.add_property("DTSTART;VALUE=DATE", d.format("%Y%m%d").to_string());
         }
         Timestamp::DateTime(dt) => {
-            event.add_property("DTSTART", &dt.format("%Y%m%dT%H%M%S").to_string());
+            event.add_property("DTSTART", dt.format("%Y%m%dT%H%M%S").to_string());
         }
     }
     event.add_property("X-MORG-SOURCE", location);
     if let Some(r) = repeater {
-        event.add_property("RRULE", &r.as_rrule());
+        event.add_property("RRULE", r.as_rrule());
     }
     event.done()
 }

@@ -117,11 +117,10 @@ fn get_note_date(path: &Path) -> Option<String> {
             in_frontmatter = true;
             continue;
         }
-        if in_frontmatter {
-            if let Some(rest) = line.strip_prefix("date:") {
+        if in_frontmatter
+            && let Some(rest) = line.strip_prefix("date:") {
                 return Some(rest.trim().to_string());
             }
-        }
     }
     None
 }
@@ -174,14 +173,13 @@ fn rotate_note(
             note = note.replace(placeholder_block, &carried);
         } else {
             // If no placeholder block, append after ## TODOs
-            if let Some(pos) = note.find("## TODOs") {
-                if let Some(newline_pos) = note[pos..].find('\n') {
+            if let Some(pos) = note.find("## TODOs")
+                && let Some(newline_pos) = note[pos..].find('\n') {
                     let insert_at = pos + newline_pos + 1;
                     // Skip blank line after heading
                     let skip = if note[insert_at..].starts_with('\n') { 1 } else { 0 };
                     note.insert_str(insert_at + skip, &carried);
                 }
-            }
         }
 
         println!("Carried over {} unchecked todo(s).", unchecked_todos.len());

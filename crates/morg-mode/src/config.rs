@@ -55,6 +55,7 @@ pub struct DiaryConfig {
 /// Capture configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct CaptureConfig {
     /// Path to capture templates YAML file.
     /// Default: `$XDG_CONFIG_HOME/morg/capture.yaml`
@@ -86,13 +87,6 @@ impl Default for DiaryConfig {
     }
 }
 
-impl Default for CaptureConfig {
-    fn default() -> Self {
-        Self {
-            templates_file: None,
-        }
-    }
-}
 
 impl Config {
     /// Resolved diary directory (diary.directory or root/diary).

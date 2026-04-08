@@ -184,7 +184,7 @@ fn find_heading(
                 return Err(format!("line {n} is past end of file").into());
             }
             let trimmed = lines[idx].trim_start();
-            if !trimmed.starts_with('#') || !trimmed[1..].starts_with(|c: char| c == ' ' || c == '#') {
+            if !trimmed.starts_with('#') || !trimmed[1..].starts_with([' ', '#']) {
                 return Err(format!("line {n} is not a heading: {}", lines[idx].trim()).into());
             }
             Ok(idx)
@@ -192,11 +192,10 @@ fn find_heading(
         LocationSpec::Heading(text) => {
             let text_lower = text.to_lowercase();
             for block in blocks {
-                if let Block::Heading(h) = block {
-                    if h.content.plain_text().to_lowercase().contains(&text_lower) {
+                if let Block::Heading(h) = block
+                    && h.content.plain_text().to_lowercase().contains(&text_lower) {
                         return Ok((h.span.line as usize).saturating_sub(1));
                     }
-                }
             }
             Err(format!("heading matching \"{text}\" not found").into())
         }
@@ -211,13 +210,12 @@ fn find_heading_insert_point(
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let text_lower = heading_text.to_lowercase();
     for block in blocks {
-        if let Block::Heading(h) = block {
-            if h.content.plain_text().to_lowercase().contains(&text_lower) {
+        if let Block::Heading(h) = block
+            && h.content.plain_text().to_lowercase().contains(&text_lower) {
                 // Insert at the end of this heading's subtree
                 let end = find_subtree_end(h.level, (h.span.line as usize) - 1, blocks, total_lines);
                 return Ok(end);
             }
-        }
     }
     Err(format!("target heading matching \"{heading_text}\" not found").into())
 }

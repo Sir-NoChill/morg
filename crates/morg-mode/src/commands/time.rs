@@ -19,15 +19,14 @@ pub fn run(
         collect::walk_tags(&pf.path, &pf.document, |ctx: TagContext<'_>| {
             let heading = ctx
                 .parent_heading
-                .map(|h| heading_plain_text(h))
+                .map(heading_plain_text)
                 .unwrap_or_default();
 
             // Filter by project if specified
-            if let Some(proj) = project {
-                if !heading.to_lowercase().contains(&proj.to_lowercase()) {
+            if let Some(proj) = project
+                && !heading.to_lowercase().contains(&proj.to_lowercase()) {
                     return;
                 }
-            }
 
             match &ctx.tag.kind {
                 TagKind::ClockIn { datetime } => {
