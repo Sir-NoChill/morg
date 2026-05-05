@@ -22,6 +22,8 @@ pub enum Command {
     Init,
     /// Open today's diary note (rotate, archive, carry todos)
     Diary {
+        /// Named sub-diary to open (e.g. a research diary); stored under <diary-dir>/<name>/
+        name: Option<String>,
         /// Don't open in $EDITOR, just print the path
         #[arg(long)]
         no_edit: bool,

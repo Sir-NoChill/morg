@@ -3,6 +3,11 @@
 //! Opens today's diary note, creating a new one from a template if the current
 //! note is outdated or missing. Stale notes are archived into a date-based
 //! directory structure and unchecked todos are carried forward.
+//!
+//! When an optional `name` argument is supplied the command operates on a
+//! *named sub-diary* stored at `<diary-dir>/<name>/`.  The sub-diary mirrors
+//! the top-level diary layout: a `today.md` active note and a
+//! `{year}/{month}/{day}.md` archive tree.
 
 use std::path::Path;
 
@@ -11,10 +16,28 @@ use chrono::Local;
 use crate::config::Config;
 use crate::util::expand_tilde;
 
-pub fn run(config: &Config, no_edit: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let diary_dir = expand_tilde(&config.diary_dir());
-    let template_path = expand_tilde(&config.diary_template());
-    let today_path = expand_tilde(&config.diary_today());
+pub fn run(
+    config: &Config,
+    no_edit: bool,
+    name: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base_diary_dir = expand_tilde(&config.diary_dir());
+
+    // When a name is given, operate on <diary-dir>/<name>/ as a self-contained
+    // sub-diary.  The template falls back to <sub-diary-dir>/daily_note.template
+    // and is seeded with a research-focused default if absent.
+    let (diary_dir, template_path, today_path) = if let Some(n) = name {
+        let sub_dir = base_diary_dir.join(n);
+        let tmpl = sub_dir.join("daily_note.template");
+        let today = sub_dir.join(&config.diary.today_file);
+        (sub_dir, tmpl, today)
+    } else {
+        (
+            base_diary_dir,
+            expand_tilde(&config.diary_template()),
+            expand_tilde(&config.diary_today()),
+        )
+    };
 
     let now = Local::now();
     let current_date = now.format("%Y-%m-%d").to_string();
@@ -29,24 +52,34 @@ pub fn run(config: &Config, no_edit: bool) -> Result<(), Box<dyn std::error::Err
 
     // Check if template exists
     if !template_path.exists() {
-        create_default_template(&template_path)?;
+        if name.is_some() {
+            create_research_template(&template_path)?;
+        } else {
+            create_default_template(&template_path)?;
+        }
         eprintln!("Created default template at {}", template_path.display());
     }
 
     // Read the current today file's date (if it exists)
     let note_date = get_note_date(&today_path);
 
+    let diary_label = name.map_or_else(|| "diary".to_string(), |n| format!("diary '{n}'"));
+
     if note_date.as_deref() == Some(current_date.as_str()) {
         // Today's note is current — just open it
-        println!("Opening today's note ({current_date}).");
+        println!("Opening today's note for {diary_label} ({current_date}).");
     } else {
         // Rotate: archive the old note, create a new one
         if let Some(ref old_date) = note_date {
-            println!("Note date ({old_date}) does not match today ({current_date}). Rotating.");
+            println!(
+                "Note date ({old_date}) does not match today ({current_date}). Rotating {diary_label}."
+            );
         } else if today_path.exists() {
-            println!("Note has no date. Rotating.");
+            println!("Note has no date. Rotating {diary_label}.");
         } else {
-            println!("No existing note found. Creating a new note for {current_date}.");
+            println!(
+                "No existing note found. Creating a new note for {diary_label} ({current_date})."
+            );
         }
 
         // Archive using the OLD note's date for the archive path
@@ -277,6 +310,53 @@ created: HH:MM
 ## Diary
 
 <!-- Free-form notes, reflections, and thoughts for the day -->
+
+"#,
+    )?;
+    Ok(())
+}
+
+/// Default template for a named (research) sub-diary.
+///
+/// Intentionally lightweight — no time-blocks, just a dated note with space
+/// for observations, references, and follow-up tasks.
+fn create_research_template(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        path,
+        r#"---
+date: YYYY-MM-DD
+week: WW
+created: HH:MM
+---
+
+# Research Notes — YYYY-MM-DD
+
+## Summary
+
+<!-- What did you work on / read / discover today? -->
+
+---
+
+## Notes
+
+<!-- Detailed observations, ideas, and findings -->
+
+---
+
+## References
+
+<!-- Links, papers, sources consulted -->
+
+---
+
+## TODOs
+
+- [ ]
+- [ ]
+- [ ]
 
 "#,
     )?;
@@ -543,6 +623,118 @@ mod tests {
 
         // get_note_date should return today's date
         assert_eq!(get_note_date(&today), Some(current_date));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_create_research_template() {
+        let dir = temp_dir();
+        let template = dir.join("template.md");
+
+        create_research_template(&template).unwrap();
+
+        assert!(template.exists());
+        let content = fs::read_to_string(&template).unwrap();
+        assert!(content.contains("YYYY-MM-DD"));
+        assert!(content.contains("## Summary"));
+        assert!(content.contains("## Notes"));
+        assert!(content.contains("## References"));
+        assert!(content.contains("## TODOs"));
+        assert!(!content.contains("## Time Blocks"), "research template should not have time blocks");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_subdiary_created_in_named_subdirectory() {
+        let dir = temp_dir();
+        let cfg = make_config(&dir);
+
+        // Run diary with a name — should create <diary-dir>/research/
+        run(&cfg, true, Some("research")).unwrap();
+
+        let sub_dir = dir.join("diary/research");
+        assert!(sub_dir.exists(), "sub-diary directory should be created");
+        assert!(sub_dir.join("today.md").exists(), "today.md should exist in sub-diary");
+        assert!(
+            sub_dir.join("daily_note.template").exists(),
+            "research template should be created in sub-diary"
+        );
+
+        // The main diary directory should NOT have its own today.md yet
+        assert!(!dir.join("diary/today.md").exists(), "main today.md should not be created");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_subdiary_note_contains_correct_date() {
+        let dir = temp_dir();
+        let cfg = make_config(&dir);
+
+        run(&cfg, true, Some("project-x")).unwrap();
+
+        let today = dir.join("diary/project-x/today.md");
+        let content = fs::read_to_string(&today).unwrap();
+        let now = chrono::Local::now();
+        let current_date = now.format("%Y-%m-%d").to_string();
+        assert!(content.contains(&current_date), "today.md should contain today's date");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_subdiary_archives_to_own_tree() {
+        let dir = temp_dir();
+        let cfg = make_config(&dir);
+
+        let sub_dir = dir.join("diary/myresearch");
+        fs::create_dir_all(&sub_dir).unwrap();
+
+        // Seed a stale today.md in the sub-diary
+        let today = sub_dir.join("today.md");
+        fs::write(&today, "---\ndate: 2026-01-15\n---\n# Old note\n\n## TODOs\n\n- [ ] Follow up\n").unwrap();
+
+        run(&cfg, true, Some("myresearch")).unwrap();
+
+        // Archive should be inside the sub-diary, not the main diary
+        let archive = sub_dir.join("2026/01/15.md");
+        assert!(archive.exists(), "archived note should be inside the sub-diary tree");
+
+        // Main diary archive should be untouched
+        assert!(!dir.join("diary/2026").exists(), "main diary archive should not exist");
+
+        let new_note = fs::read_to_string(&today).unwrap();
+        let now = chrono::Local::now();
+        assert!(new_note.contains(&now.format("%Y-%m-%d").to_string()));
+        assert!(new_note.contains("- [ ] Follow up"), "unchecked todos should be carried over");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_main_diary_unaffected_by_subdiary() {
+        let dir = temp_dir();
+        let cfg = make_config(&dir);
+
+        // Seed main diary with today's date so it is "current"
+        let main_diary = dir.join("diary");
+        fs::create_dir_all(&main_diary).unwrap();
+        let now = chrono::Local::now();
+        let current_date = now.format("%Y-%m-%d").to_string();
+        fs::write(
+            main_diary.join("today.md"),
+            format!("---\ndate: {current_date}\n---\n# Main diary\n"),
+        )
+        .unwrap();
+
+        // Open a sub-diary
+        run(&cfg, true, Some("side-notes")).unwrap();
+
+        // Main today.md unchanged
+        let main_content = fs::read_to_string(main_diary.join("today.md")).unwrap();
+        assert!(main_content.contains("# Main diary"), "main diary should be untouched");
 
         fs::remove_dir_all(&dir).unwrap();
     }

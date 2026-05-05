@@ -26,7 +26,7 @@ fn main() {
 
     let result = match cli.command {
         Command::Init => config::init_config(),
-        Command::Diary { no_edit } => commands::diary::run(&cfg, no_edit),
+        Command::Diary { name, no_edit } => commands::diary::run(&cfg, no_edit, name.as_deref()),
         Command::Tangle { files, output_dir } => {
             commands::tangle::run(&default_files(files), output_dir.as_deref())
         }
