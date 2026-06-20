@@ -29,3 +29,9 @@ repos:
         language: system
         types: [lua]
         pass_filenames: true
+
+      - id: conventional-commit
+        name: conventional commit message
+        entry: scripts/check-conventional-commit.sh
+        language: script
+        stages: [commit-msg]
