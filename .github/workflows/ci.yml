@@ -72,20 +72,33 @@ jobs:
           version: latest
           args: --check morg-mode-nvim/lua morg-mode-nvim/plugin morg-mode-nvim/spec
 
-  # Neovim plugin tests using hererocks (isolated LuaJIT environment)
+  # Neovim plugin tests — only run when the plugin source tree is present.
+  # The plugin was moved to a separate repo (commit 12c3fb6); this job is
+  # kept so it automatically re-activates if the directory is restored.
   nvim-plugin-tests:
     name: Neovim Plugin Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Check for plugin source
+        id: plugin-check
+        run: |
+          if [ -d "morg-mode-nvim" ]; then
+            echo "has_plugin=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_plugin=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: rhysd/action-setup-vim@v1
+        if: steps.plugin-check.outputs.has_plugin == 'true'
         with:
           neovim: true
           version: stable
       - uses: actions/setup-python@v5
+        if: steps.plugin-check.outputs.has_plugin == 'true'
         with:
           python-version: '3.x'
       - name: Setup Lua test environment (hererocks)
+        if: steps.plugin-check.outputs.has_plugin == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libreadline-dev
@@ -98,6 +111,7 @@ jobs:
           .lua-env/bin/luarocks install nlua
           .lua-env/bin/luarocks install luafilesystem
       - name: Run plugin tests
+        if: steps.plugin-check.outputs.has_plugin == 'true'
         working-directory: morg-mode-nvim
         run: |
           export PATH="$GITHUB_WORKSPACE/.lua-env/bin:$PATH"
@@ -121,4 +135,8 @@ jobs:
         run: nix develop --command cargo test --workspace
       - name: Neovim plugin tests (nix)
         run: |
-          nix develop .#lua-tests --command bash -c "cd morg-mode-nvim && busted ."
+          if [ -d "morg-mode-nvim" ]; then
+            nix develop .#lua-tests --command bash -c "cd morg-mode-nvim && busted ."
+          else
+            echo "morg-mode-nvim not present, skipping Lua tests"
+          fi
