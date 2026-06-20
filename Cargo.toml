@@ -4,7 +4,7 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 version = "0.1.0"
 authors = ["Sir-NoChill <git@blobfish.icu>"]
 categories = ["command-line-utilities", "text-processing", "parser-implementations"]
