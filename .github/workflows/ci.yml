@@ -57,7 +57,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Check for Lua sources
+        id: lua-check
+        run: |
+          if [ -d "morg-mode-nvim/lua" ] || [ -d "morg-mode-nvim/plugin" ] || [ -d "morg-mode-nvim/spec" ]; then
+            echo "has_lua=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_lua=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: JohnnyMorganz/stylua-action@v4
+        if: steps.lua-check.outputs.has_lua == 'true'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: latest
