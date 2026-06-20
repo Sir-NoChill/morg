@@ -32,6 +32,7 @@ pub enum TagKind {
     },
     Event {
         date: Timestamp,
+        end_date: Option<Timestamp>,
         repeater: Option<Repeater>,
         description: Option<String>,
     },
@@ -186,8 +187,9 @@ pub fn parse_tag(name: &str, arg: Option<&str>, span: Span) -> Tag {
             None => unknown(name, arg),
         },
         Some(Keyword::Event) => match parse_event(arg) {
-            Some((date, repeater, description)) => TagKind::Event {
+            Some((date, end_date, repeater, description)) => TagKind::Event {
                 date,
+                end_date,
                 repeater,
                 description,
             },
@@ -334,40 +336,54 @@ fn parse_repeater(s: &str) -> Option<Repeater> {
     Some(Repeater { interval, unit })
 }
 
-fn parse_event(arg: Option<&str>) -> Option<(Timestamp, Option<Repeater>, Option<String>)> {
+type EventParts<'a> = (
+    Timestamp,
+    Option<Timestamp>,
+    Option<Repeater>,
+    Option<String>,
+);
+
+fn parse_event(arg: Option<&str>) -> Option<EventParts<'_>> {
     let s = arg?.trim();
     if s.len() < 10 {
         return None;
     }
 
-    // Parse timestamp (date or datetime)
-    let (ts, after_ts) = if s.len() >= 16 && s.as_bytes()[10] == b'T' {
-        if let Ok(dt) = NaiveDateTime::parse_from_str(&s[..16], "%Y-%m-%dT%H:%M") {
-            (Timestamp::DateTime(dt), s[16..].trim())
+    // Parse start timestamp (date or datetime)
+    let (start_ts, after_start) = parse_event_timestamp(s)?;
+
+    // Check for end date via `/` separator (e.g. 2026-04-10/2026-04-12)
+    let (end_ts, after_end) = if let Some(rest) = after_start.strip_prefix('/') {
+        if rest.len() >= 10 {
+            if let Some((end, after)) = parse_event_timestamp(rest) {
+                (Some(end), after)
+            } else {
+                (None, after_start)
+            }
         } else {
-            let date = NaiveDate::parse_from_str(&s[..10], "%Y-%m-%d").ok()?;
-            (Timestamp::Date(date), s[10..].trim())
+            (None, after_start)
         }
     } else {
-        let date = NaiveDate::parse_from_str(&s[..10], "%Y-%m-%d").ok()?;
-        (Timestamp::Date(date), s[10..].trim())
+        (None, after_start)
     };
 
+    let remaining = after_end.trim();
+
     // Check for repeater before description
-    let (repeater, description_part) = if let Some(after_plus) = after_ts.strip_prefix('+') {
+    let (repeater, description_part) = if let Some(after_plus) = remaining.strip_prefix('+') {
         let num_end = after_plus
             .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(after_plus.len());
         let repeater_end = 1 + num_end + 1;
-        if repeater_end <= after_ts.len() {
-            let rep = parse_repeater(&after_ts[..repeater_end]);
-            let desc = after_ts[repeater_end..].trim();
+        if repeater_end <= remaining.len() {
+            let rep = parse_repeater(&remaining[..repeater_end]);
+            let desc = remaining[repeater_end..].trim();
             (rep, desc)
         } else {
-            (parse_repeater(after_ts), "")
+            (parse_repeater(remaining), "")
         }
     } else {
-        (None, after_ts)
+        (None, remaining)
     };
 
     let description = if description_part.is_empty() {
@@ -375,7 +391,20 @@ fn parse_event(arg: Option<&str>) -> Option<(Timestamp, Option<Repeater>, Option
     } else {
         Some(description_part.to_string())
     };
-    Some((ts, repeater, description))
+    Some((start_ts, end_ts, repeater, description))
+}
+
+/// Parse a single date or datetime from the start of a string.
+/// Returns the timestamp and the remaining unparsed portion.
+fn parse_event_timestamp(s: &str) -> Option<(Timestamp, &str)> {
+    if s.len() >= 16
+        && s.as_bytes()[10] == b'T'
+        && let Ok(dt) = NaiveDateTime::parse_from_str(&s[..16], "%Y-%m-%dT%H:%M")
+    {
+        return Some((Timestamp::DateTime(dt), &s[16..]));
+    }
+    let date = NaiveDate::parse_from_str(&s[..10], "%Y-%m-%d").ok()?;
+    Some((Timestamp::Date(date), &s[10..]))
 }
 
 fn parse_datetime(arg: Option<&str>) -> Option<NaiveDateTime> {
@@ -571,6 +600,7 @@ mod tests {
                 date: Timestamp::Date(d),
                 repeater: Some(Repeater { interval: 1, unit: RepeaterUnit::Year }),
                 description: Some(ref desc),
+                ..
             } if d == NaiveDate::from_ymd_opt(2026, 1, 1).unwrap() && desc == "New Year"
         ));
     }
@@ -600,6 +630,89 @@ mod tests {
         assert!(
             matches!(tag.kind, TagKind::Event { date: Timestamp::Date(d), description: Some(ref desc), .. } if d == NaiveDate::from_ymd_opt(2026, 4, 10).unwrap() && desc == "Team meeting")
         );
+    }
+
+    #[test]
+    fn test_parse_event_date_range() {
+        let tag = parse_tag(
+            "event",
+            Some("2026-04-10/2026-04-12 Conference"),
+            Span::empty(1, 1),
+        );
+        match &tag.kind {
+            TagKind::Event {
+                date,
+                end_date,
+                description,
+                ..
+            } => {
+                assert_eq!(date.date(), NaiveDate::from_ymd_opt(2026, 4, 10).unwrap());
+                let end = end_date.expect("should have end_date");
+                assert_eq!(end.date(), NaiveDate::from_ymd_opt(2026, 4, 12).unwrap());
+                assert_eq!(description.as_deref(), Some("Conference"));
+            }
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_event_datetime_range() {
+        let tag = parse_tag(
+            "event",
+            Some("2026-04-10T09:00/2026-04-10T17:00 Workshop"),
+            Span::empty(1, 1),
+        );
+        match &tag.kind {
+            TagKind::Event {
+                date,
+                end_date,
+                description,
+                ..
+            } => {
+                assert!(date.has_time());
+                let end = end_date.expect("should have end_date");
+                assert!(end.has_time());
+                assert_eq!(description.as_deref(), Some("Workshop"));
+            }
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_event_no_range() {
+        // Events without / should have no end_date
+        let tag = parse_tag("event", Some("2026-04-10 Meeting"), Span::empty(1, 1));
+        match &tag.kind {
+            TagKind::Event { end_date, .. } => {
+                assert!(
+                    end_date.is_none(),
+                    "single-date event should have no end_date"
+                );
+            }
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_event_range_with_repeater() {
+        let tag = parse_tag(
+            "event",
+            Some("2026-04-10/2026-04-12 +1y Annual Conference"),
+            Span::empty(1, 1),
+        );
+        match &tag.kind {
+            TagKind::Event {
+                end_date,
+                repeater,
+                description,
+                ..
+            } => {
+                assert!(end_date.is_some());
+                assert!(repeater.is_some());
+                assert_eq!(description.as_deref(), Some("Annual Conference"));
+            }
+            other => panic!("expected Event, got {other:?}"),
+        }
     }
 
     #[test]

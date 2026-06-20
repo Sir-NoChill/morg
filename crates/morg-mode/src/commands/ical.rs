@@ -78,6 +78,7 @@ pub fn run(paths: &[PathBuf], output: Option<&Path>) -> Result<(), Box<dyn std::
                 }
                 TagKind::Event {
                     date,
+                    end_date,
                     repeater,
                     description,
                 } => {
@@ -85,7 +86,23 @@ pub fn run(paths: &[PathBuf], output: Option<&Path>) -> Result<(), Box<dyn std::
                         .clone()
                         .or(heading.clone())
                         .unwrap_or_else(|| "Event".to_string());
-                    let event = build_event(&summary, *date, &location, repeater.as_ref());
+                    let mut event = build_event(&summary, *date, &location, repeater.as_ref());
+                    if let Some(end) = end_date {
+                        match end {
+                            Timestamp::Date(d) => {
+                                // iCal DTEND for all-day events is exclusive,
+                                // so add one day.
+                                let end_exclusive = *d + chrono::Duration::days(1);
+                                event.add_property(
+                                    "DTEND;VALUE=DATE",
+                                    end_exclusive.format("%Y%m%d").to_string(),
+                                );
+                            }
+                            Timestamp::DateTime(dt) => {
+                                event.add_property("DTEND", dt.format("%Y%m%dT%H%M%S").to_string());
+                            }
+                        }
+                    }
                     calendar.push(event);
                     count += 1;
                 }

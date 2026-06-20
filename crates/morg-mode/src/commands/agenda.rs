@@ -27,6 +27,7 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                     warning,
                 } => Some(AgendaEntry {
                     date: *date,
+                    end_date: None,
                     kind: "DEADLINE",
                     repeater: *repeater,
                     warning: *warning,
@@ -39,6 +40,7 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                     warning,
                 } => Some(AgendaEntry {
                     date: *date,
+                    end_date: None,
                     kind: "SCHEDULED",
                     repeater: *repeater,
                     warning: *warning,
@@ -47,6 +49,7 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                 }),
                 TagKind::Date { date, repeater } => Some(AgendaEntry {
                     date: *date,
+                    end_date: None,
                     kind: "DATE",
                     repeater: *repeater,
                     warning: None,
@@ -55,10 +58,12 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                 }),
                 TagKind::Event {
                     date,
+                    end_date,
                     repeater,
                     description,
                 } => Some(AgendaEntry {
                     date: *date,
+                    end_date: *end_date,
                     kind: "EVENT",
                     repeater: *repeater,
                     warning: None,
@@ -97,15 +102,35 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
                 }
             }
             None => {
-                expanded.push(ExpandedEntry {
-                    date: base_date,
-                    timestamp: entry.date,
-                    kind: entry.kind,
-                    description: entry.description.clone(),
-                    location: entry.location.clone(),
-                    recurring: false,
-                    is_warning: false,
-                });
+                if let Some(end_ts) = entry.end_date {
+                    // Range event: expand to each day from start through end
+                    let end_date = end_ts.date();
+                    let mut date = base_date;
+                    while date <= end_date && date <= horizon {
+                        if date >= today {
+                            expanded.push(ExpandedEntry {
+                                date,
+                                timestamp: entry.date,
+                                kind: entry.kind,
+                                description: entry.description.clone(),
+                                location: entry.location.clone(),
+                                recurring: false,
+                                is_warning: false,
+                            });
+                        }
+                        date += Duration::days(1);
+                    }
+                } else {
+                    expanded.push(ExpandedEntry {
+                        date: base_date,
+                        timestamp: entry.date,
+                        kind: entry.kind,
+                        description: entry.description.clone(),
+                        location: entry.location.clone(),
+                        recurring: false,
+                        is_warning: false,
+                    });
+                }
             }
         }
 
@@ -181,6 +206,7 @@ pub fn run(paths: &[PathBuf], json: bool) -> Result<(), Box<dyn std::error::Erro
 
 struct AgendaEntry {
     date: Timestamp,
+    end_date: Option<Timestamp>,
     kind: &'static str,
     repeater: Option<Repeater>,
     warning: Option<u32>,
