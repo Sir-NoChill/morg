@@ -641,7 +641,10 @@ mod tests {
         assert!(content.contains("## Notes"));
         assert!(content.contains("## References"));
         assert!(content.contains("## TODOs"));
-        assert!(!content.contains("## Time Blocks"), "research template should not have time blocks");
+        assert!(
+            !content.contains("## Time Blocks"),
+            "research template should not have time blocks"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -656,14 +659,20 @@ mod tests {
 
         let sub_dir = dir.join("diary/research");
         assert!(sub_dir.exists(), "sub-diary directory should be created");
-        assert!(sub_dir.join("today.md").exists(), "today.md should exist in sub-diary");
+        assert!(
+            sub_dir.join("today.md").exists(),
+            "today.md should exist in sub-diary"
+        );
         assert!(
             sub_dir.join("daily_note.template").exists(),
             "research template should be created in sub-diary"
         );
 
         // The main diary directory should NOT have its own today.md yet
-        assert!(!dir.join("diary/today.md").exists(), "main today.md should not be created");
+        assert!(
+            !dir.join("diary/today.md").exists(),
+            "main today.md should not be created"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -679,7 +688,10 @@ mod tests {
         let content = fs::read_to_string(&today).unwrap();
         let now = chrono::Local::now();
         let current_date = now.format("%Y-%m-%d").to_string();
-        assert!(content.contains(&current_date), "today.md should contain today's date");
+        assert!(
+            content.contains(&current_date),
+            "today.md should contain today's date"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -694,21 +706,34 @@ mod tests {
 
         // Seed a stale today.md in the sub-diary
         let today = sub_dir.join("today.md");
-        fs::write(&today, "---\ndate: 2026-01-15\n---\n# Old note\n\n## TODOs\n\n- [ ] Follow up\n").unwrap();
+        fs::write(
+            &today,
+            "---\ndate: 2026-01-15\n---\n# Old note\n\n## TODOs\n\n- [ ] Follow up\n",
+        )
+        .unwrap();
 
         run(&cfg, true, Some("myresearch")).unwrap();
 
         // Archive should be inside the sub-diary, not the main diary
         let archive = sub_dir.join("2026/01/15.md");
-        assert!(archive.exists(), "archived note should be inside the sub-diary tree");
+        assert!(
+            archive.exists(),
+            "archived note should be inside the sub-diary tree"
+        );
 
         // Main diary archive should be untouched
-        assert!(!dir.join("diary/2026").exists(), "main diary archive should not exist");
+        assert!(
+            !dir.join("diary/2026").exists(),
+            "main diary archive should not exist"
+        );
 
         let new_note = fs::read_to_string(&today).unwrap();
         let now = chrono::Local::now();
         assert!(new_note.contains(&now.format("%Y-%m-%d").to_string()));
-        assert!(new_note.contains("- [ ] Follow up"), "unchecked todos should be carried over");
+        assert!(
+            new_note.contains("- [ ] Follow up"),
+            "unchecked todos should be carried over"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -734,7 +759,10 @@ mod tests {
 
         // Main today.md unchanged
         let main_content = fs::read_to_string(main_diary.join("today.md")).unwrap();
-        assert!(main_content.contains("# Main diary"), "main diary should be untouched");
+        assert!(
+            main_content.contains("# Main diary"),
+            "main diary should be untouched"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }

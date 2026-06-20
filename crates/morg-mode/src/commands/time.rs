@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -121,7 +122,7 @@ pub fn run(paths: &[PathBuf], project: Option<&str>) -> Result<(), Box<dyn std::
     println!("{}", "=".repeat(40));
 
     let mut headings: Vec<_> = per_heading.into_iter().collect();
-    headings.sort_by(|a, b| b.1.cmp(&a.1));
+    headings.sort_by_key(|a| Reverse(a.1));
 
     for (heading, mins) in &headings {
         let label = if heading.is_empty() {

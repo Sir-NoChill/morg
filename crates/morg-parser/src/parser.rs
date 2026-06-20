@@ -995,6 +995,12 @@ fn extract_raw_line(lex: &mut Lexer<'_>) -> String {
                 raw = text.clone();
                 lex.advance();
             }
+            // `---` inside a code block is lexed as FrontmatterDelim (no RawLine companion),
+            // so we must reconstruct the literal text here.
+            Token::FrontmatterDelim => {
+                raw = "---".to_string();
+                lex.advance();
+            }
             _ => {
                 lex.advance();
             }
@@ -1382,5 +1388,27 @@ mod tests {
         } else {
             panic!("expected nested list");
         }
+    }
+
+    #[test]
+    fn test_yaml_triple_dash_preserved_in_code_block() {
+        // Regression: `---` inside a fenced code block must not be swallowed.
+        // Previously it was lexed as FrontmatterDelim (no RawLine), so extract_raw_line
+        // returned an empty string and the separator vanished from the tangled output.
+        let src = "```yaml\nkey: value\n---\nother: field\n```\n";
+        let result = parse_document(src);
+        assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+
+        let cb = result
+            .document
+            .children
+            .iter()
+            .find_map(|b| match b {
+                Block::CodeBlock(cb) => Some(cb),
+                _ => None,
+            })
+            .expect("expected a code block");
+
+        assert_eq!(cb.body, "key: value\n---\nother: field");
     }
 }

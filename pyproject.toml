@@ -1,0 +1,12 @@
+[project]
+name = "morg-mode-dev"
+version = "0.1.0"
+description = "Developer tooling for morg-mode"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0",
+]
+

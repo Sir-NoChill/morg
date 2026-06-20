@@ -1,0 +1,39 @@
+# Conventional commit types accepted in this repository.
+# The check-conventional-commit.sh hook reads this file at commit time.
+#
+# Format:
+#   <type>:
+#     description: <what this type is for>
+
+feat:
+  description: A new user-visible feature
+
+fix:
+  description: A bug fix
+
+docs:
+  description: Documentation changes only (no code)
+
+style:
+  description: Formatting, whitespace, or style changes that do not affect meaning
+
+refactor:
+  description: Code restructuring that neither fixes a bug nor adds a feature
+
+perf:
+  description: A change that improves performance
+
+test:
+  description: Adding or correcting tests
+
+build:
+  description: Changes to the build system or external dependencies (Cargo, Nix, uv)
+
+ci:
+  description: Changes to CI/CD pipelines or developer tooling (pre-commit, GitHub Actions)
+
+chore:
+  description: Routine maintenance that does not fit another type
+
+revert:
+  description: Reverts a previous commit

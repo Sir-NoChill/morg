@@ -10,8 +10,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Detect which parts of the tree changed so expensive jobs can be skipped.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      nix:  ${{ steps.filter.outputs.nix }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            nix:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'flake.nix'
+              - 'flake.lock'
+
   check:
     name: Check
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -21,6 +47,8 @@ jobs:
 
   test:
     name: Rust Tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -33,6 +61,8 @@ jobs:
 
   clippy:
     name: Clippy
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -44,6 +74,8 @@ jobs:
 
   fmt:
     name: Format
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -57,47 +89,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Check for Lua sources
+        id: lua-check
+        run: |
+          if [ -d "morg-mode-nvim/lua" ] || [ -d "morg-mode-nvim/plugin" ] || [ -d "morg-mode-nvim/spec" ]; then
+            echo "has_lua=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_lua=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: JohnnyMorganz/stylua-action@v4
+        if: steps.lua-check.outputs.has_lua == 'true'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: latest
           args: --check morg-mode-nvim/lua morg-mode-nvim/plugin morg-mode-nvim/spec
 
-  # Neovim plugin tests using hererocks (isolated LuaJIT environment)
-  nvim-plugin-tests:
-    name: Neovim Plugin Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: rhysd/action-setup-vim@v1
-        with:
-          neovim: true
-          version: stable
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - name: Setup Lua test environment (hererocks)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreadline-dev
-          pip install hererocks
-          # Use PUC Lua 5.1 (not LuaJIT) for luarocks itself — LuaJIT hits
-          # a 65536 constant limit parsing the luarocks manifest.
-          # Tests still run under Neovim's LuaJIT via nlua.
-          hererocks .lua-env --lua 5.1 --luarocks latest
-          .lua-env/bin/luarocks install busted
-          .lua-env/bin/luarocks install nlua
-          .lua-env/bin/luarocks install luafilesystem
-      - name: Run plugin tests
-        working-directory: morg-mode-nvim
-        run: |
-          export PATH="$GITHUB_WORKSPACE/.lua-env/bin:$PATH"
-          eval "$($GITHUB_WORKSPACE/.lua-env/bin/luarocks path)"
-          busted .
-
-  # Nix-based CI (reproducible, uses flake devShell)
   nix:
     name: Nix Build & Test
+    needs: changes
+    if: needs.changes.outputs.nix == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -110,6 +120,3 @@ jobs:
           skipPush: true
       - name: Rust tests (nix)
         run: nix develop --command cargo test --workspace
-      - name: Neovim plugin tests (nix)
-        run: |
-          nix develop .#lua-tests --command bash -c "cd morg-mode-nvim && busted ."

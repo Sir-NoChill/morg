@@ -1,0 +1,88 @@
+# Conventional commit scopes accepted in this repository.
+# The check-conventional-commit.sh hook reads this file at commit time.
+# Every commit MUST carry one of these scopes: feat(parser): …
+#
+# Format:
+#   <scope>:
+#     description: <what this scope covers>
+
+# ── Crates ────────────────────────────────────────────────────────────────────
+
+parser:
+  description: morg-parser crate — lexer, AST, and block/inline parsing
+
+mode:
+  description: morg-mode crate — top-level CLI and shared utilities
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+tangle:
+  description: Code-block tangling to output files (noweb, file targets)
+
+diary:
+  description: Daily-note and sub-diary management
+
+agenda:
+  description: Agenda view and scheduled-item aggregation
+
+time:
+  description: Clock-in/clock-out time tracking and reports
+
+todos:
+  description: TODO item collection and status transitions
+
+capture:
+  description: Quick-capture of notes or tasks
+
+archive:
+  description: Archiving completed or old entries
+
+search:
+  description: Full-text and tag-based search
+
+export:
+  description: Document export (HTML, plain text, etc.)
+
+ical:
+  description: iCalendar (.ics) export
+
+refs:
+  description: Cross-document reference resolution
+
+refile:
+  description: Moving headings or blocks between files
+
+lint:
+  description: Structural linting and validation of morg documents
+
+watch:
+  description: File-system watcher for live reprocessing
+
+frontmatter:
+  description: YAML frontmatter parsing and merging
+
+columns:
+  description: Column / property-table views
+
+id:
+  description: Unique node / heading ID generation
+
+# ── Infrastructure ────────────────────────────────────────────────────────────
+
+ci:
+  description: GitHub Actions workflows and CI configuration
+
+hooks:
+  description: Git hooks and pre-commit configuration
+
+deps:
+  description: Dependency updates (Cargo.lock, uv.lock, Nix flake inputs)
+
+nix:
+  description: Nix flake, devShell, and NixOS module
+
+docs:
+  description: User-facing documentation (mdBook, README, CONTRIBUTING)
+
+config:
+  description: Project-level configuration files not covered by another scope
