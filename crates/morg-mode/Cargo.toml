@@ -6,7 +6,7 @@ authors.workspace = true
 description.workspace = true
 documentation.workspace = true
 license.workspace = true
-readme.workspace = true
+readme = "README.md"
 categories.workspace = true
 keywords.workspace = true
 repository.workspace = true
@@ -17,13 +17,13 @@ name = "morg"
 path = "src/main.rs"
 
 [dependencies]
-morg-parser = { path = "../morg-parser" }
+morg-parser = { path = "../morg-parser", version = "0.1.0" }
 clap.workspace = true
 chrono.workspace = true
 serde_yaml.workspace = true
 icalendar = "0.16"
 serde_json = "1"
 serde = { workspace = true }
-notify = { version = "8", features = ["macos_kqueue"] }
+notify = "8"
 toml = "0.8"
 dirs = "6"

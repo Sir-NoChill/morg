@@ -4,21 +4,19 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-# rust-version = "1.70.0"
+rust-version = "1.85.0"
 version = "0.1.0"
 authors = ["Sir-NoChill <git@blobfish.icu>"]
-categories = []
-keywords = []
-description = "Morg-mode: A markdown equivalent for org-mode"
-documentation = "https://sir-nochill.github.io/morg-mode"
-# homepage = "https://sir-nochill.github.io/morg-mode"
+categories = ["command-line-utilities", "text-processing", "parser-implementations"]
+keywords = ["org-mode", "markdown", "tags", "todo", "time-tracking"]
+description = "A markdown-idiomatic replacement for Emacs org-mode: tag system, todos, time tracking, agenda, and literate programming"
+documentation = "https://docs.rs/morg-parser"
+homepage = "https://github.com/Sir-NoChill/morg-mode"
 repository = "https://github.com/Sir-NoChill/morg-mode"
 license = "Unlicense"
 readme = "README.md"
 
-exclude = [".github/"]
-# include = [ "*" ]
-# publish = ["crates.io"]
+exclude = [".github/", "docs/", "scripts/", "*.yml", "*.lock", "flake.nix", "pyproject.toml"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
