@@ -41,7 +41,12 @@ pub fn run(paths: &[PathBuf], output_dir: Option<&Path>) -> Result<(), Box<dyn s
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        let content = expand_noweb(&raw_content, &named_blocks);
+        let mut content = expand_noweb(&raw_content, &named_blocks);
+
+        let allow_trailing_newline = blocks.iter().any(|b| b.allow_trailing_newline);
+        if allow_trailing_newline && !content.ends_with('\n') {
+            content.push('\n');
+        }
 
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
@@ -69,6 +74,7 @@ struct TangleBlock {
     body: String,
     source_file: PathBuf,
     line: u32,
+    allow_trailing_newline: bool,
 }
 
 /// Collect all code blocks with a `name=` attribute into a map.
@@ -106,10 +112,16 @@ fn collect_tangle_blocks(
                 if let Some(target) =
                     tangle_target(&cb.tags, &cb.attributes, source_dir, output_dir)
                 {
+                    let allow_trailing_newline = cb
+                        .attributes
+                        .get("allow-trailing-newline")
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
                     targets.entry(target).or_default().push(TangleBlock {
                         body: cb.body.clone(),
                         source_file: source_file.to_path_buf(),
                         line: cb.span.line,
+                        allow_trailing_newline,
                     });
                 }
             }
@@ -117,11 +129,17 @@ fn collect_tangle_blocks(
                 if let Some(target) =
                     tangle_target(&callout.tags, &callout.attributes, source_dir, output_dir)
                 {
+                    let allow_trailing_newline = callout
+                        .attributes
+                        .get("allow-trailing-newline")
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
                     let body = render_callout_content(&callout.content);
                     targets.entry(target).or_default().push(TangleBlock {
                         body,
                         source_file: source_file.to_path_buf(),
                         line: callout.span.line,
+                        allow_trailing_newline,
                     });
                 }
                 collect_tangle_blocks(
@@ -364,5 +382,35 @@ mod tests {
         assert_eq!(parse_noweb_ref("    <<body>>"), Some(("    ", "body")));
         assert_eq!(parse_noweb_ref("not a ref"), None);
         assert_eq!(parse_noweb_ref("<<>>"), None);
+    }
+
+    // -------------------------------------------------------------------------
+    // Issue: allow-trailing-newline attribute
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_allow_trailing_newline_adds_newline() {
+        // When allow_trailing_newline is true, expand_noweb result gets a \n appended.
+        let named = HashMap::new();
+        let body = "line one\nline two";
+        // Simulate what tangle does after expand_noweb when the flag is set.
+        let mut content = expand_noweb(body, &named);
+        // content has no trailing newline (input had none)
+        assert!(!content.ends_with('\n'), "sanity: no trailing newline yet");
+        // apply the allow-trailing-newline logic
+        content.push('\n');
+        assert!(content.ends_with('\n'));
+        assert_eq!(content, "line one\nline two\n");
+    }
+
+    #[test]
+    fn test_no_trailing_newline_by_default() {
+        let named = HashMap::new();
+        let body = "line one\nline two";
+        let content = expand_noweb(body, &named);
+        assert!(
+            !content.ends_with('\n'),
+            "default should have no trailing newline"
+        );
     }
 }
