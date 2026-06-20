@@ -2,6 +2,15 @@
 name = "morg-mode"
 edition.workspace = true
 version.workspace = true
+authors.workspace = true
+description.workspace = true
+documentation.workspace = true
+license.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+exclude.workspace = true
 
 [[bin]]
 name = "morg"
