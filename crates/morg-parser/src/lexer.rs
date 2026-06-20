@@ -87,15 +87,62 @@ static EOF_TOKEN: Spanned = Spanned {
 /// - One block-classification token (Heading, FencedCodeOpen, BlankLine, etc.)
 /// - A `RawLine` token carrying the full line text
 /// - A `Newline` token
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrontmatterState {
+    BeforeContent,
+    InsideFrontmatter,
+    Done,
+}
+
 fn tokenize_blocks(source: &str) -> Vec<Spanned> {
     let mut tokens = Vec::new();
     let mut byte_offset: usize = 0;
+    let mut frontmatter_state = FrontmatterState::BeforeContent;
 
-    for (line_idx, line_text) in source.split('\n').enumerate() {
+    let lines: Vec<&str> = source.split('\n').collect();
+    let mut line_idx = 0;
+
+    while line_idx < lines.len() {
+        let line_text = lines[line_idx];
         let line_number = (line_idx + 1) as u32;
         let span = Span::new(byte_offset, byte_offset + line_text.len(), line_number, 1);
 
-        classify_line(line_text, span, &mut tokens);
+        classify_line(line_text, span, &mut tokens, &mut frontmatter_state);
+
+        // Setext heading lookahead: if the current line was classified as
+        // plain text (Text + RawLine) and the next line is a setext underline
+        // (contiguous `=` or `-`, optionally indented 0-3 spaces), rewrite
+        // the Text token as a Heading and skip the underline line.
+        // Suppressed inside frontmatter where lines are raw YAML.
+        if line_idx + 1 < lines.len() && frontmatter_state == FrontmatterState::Done {
+            let was_text_line = tokens.len() >= 2
+                && matches!(tokens[tokens.len() - 2].kind, Token::Text(_))
+                && matches!(tokens[tokens.len() - 1].kind, Token::RawLine(_));
+
+            if was_text_line && let Some(level) = try_setext_underline(lines[line_idx + 1]) {
+                // Rewrite the Text marker to a Heading token
+                let marker_idx = tokens.len() - 2;
+                tokens[marker_idx].kind = Token::Heading { level };
+
+                // Emit Newline for the current (heading text) line
+                tokens.push(Spanned {
+                    kind: Token::Newline,
+                    span: Span::new(
+                        byte_offset + line_text.len(),
+                        byte_offset + line_text.len() + 1,
+                        line_number,
+                        (line_text.len() + 1) as u32,
+                    ),
+                });
+                byte_offset += line_text.len() + 1;
+
+                // Skip the underline line entirely (no tokens emitted)
+                let ul_text = lines[line_idx + 1];
+                byte_offset += ul_text.len() + 1;
+                line_idx += 2; // skip both current line (already processed) and underline
+                continue;
+            }
+        }
 
         tokens.push(Spanned {
             kind: Token::Newline,
@@ -108,6 +155,7 @@ fn tokenize_blocks(source: &str) -> Vec<Spanned> {
         });
 
         byte_offset += line_text.len() + 1;
+        line_idx += 1;
     }
 
     // Replace final Newline with Eof
@@ -120,11 +168,39 @@ fn tokenize_blocks(source: &str) -> Vec<Spanned> {
     tokens
 }
 
+/// Check if a line is a setext heading underline.
+/// Returns `Some(1)` for `=` underlines (h1), `Some(2)` for `-` underlines (h2),
+/// or `None` if the line is not a valid setext underline.
+///
+/// Per CommonMark: 0-3 leading spaces, then one or more `=` or `-` (all the same),
+/// then optional trailing spaces. No other characters allowed.
+fn try_setext_underline(line: &str) -> Option<u8> {
+    let indent = line.len() - line.trim_start_matches(' ').len();
+    if indent >= 4 {
+        return None;
+    }
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let first = trimmed.as_bytes()[0];
+    if first != b'=' && first != b'-' {
+        return None;
+    }
+    if !trimmed.bytes().all(|b| b == first) {
+        return None;
+    }
+    Some(if first == b'=' { 1 } else { 2 })
+}
+
 /// Classify a single line into block-level token(s) + RawLine.
-fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
+fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>, fm_state: &mut FrontmatterState) {
     let trimmed = text.trim();
 
     if trimmed.is_empty() {
+        if *fm_state == FrontmatterState::BeforeContent {
+            *fm_state = FrontmatterState::Done;
+        }
         out.push(Spanned {
             kind: Token::BlankLine,
             span,
@@ -167,7 +243,7 @@ fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
         return;
     }
 
-    // Footnote definition
+    // Footnote definition: [^label]: content
     if let Some(label) = try_footnote_def(trimmed) {
         out.push(Spanned {
             kind: Token::FootnoteDefStart { label },
@@ -180,13 +256,47 @@ fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
         return;
     }
 
-    // Frontmatter delimiter
-    if trimmed == "---" {
+    // Link reference definition: [label]: url "title"
+    if let Some(label) = try_link_def(trimmed) {
         out.push(Spanned {
-            kind: Token::FrontmatterDelim,
+            kind: Token::LinkDefStart { label },
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
             span,
         });
         return;
+    }
+
+    // Frontmatter delimiter
+    if trimmed == "---" {
+        match *fm_state {
+            FrontmatterState::BeforeContent => {
+                *fm_state = FrontmatterState::InsideFrontmatter;
+                out.push(Spanned {
+                    kind: Token::FrontmatterDelim,
+                    span,
+                });
+            }
+            FrontmatterState::InsideFrontmatter => {
+                *fm_state = FrontmatterState::Done;
+                out.push(Spanned {
+                    kind: Token::FrontmatterDelim,
+                    span,
+                });
+            }
+            FrontmatterState::Done => {
+                out.push(Spanned {
+                    kind: Token::HorizontalRule,
+                    span,
+                });
+            }
+        }
+        return;
+    }
+    if *fm_state == FrontmatterState::BeforeContent {
+        *fm_state = FrontmatterState::Done;
     }
 
     // Horizontal rule
@@ -198,9 +308,14 @@ fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
         return;
     }
 
-    // Code fence
+    // Code fence — emit a RawLine alongside so the parser can recover the
+    // raw text when an inner fence doesn't match the outer block's fence.
     if let Some(tok) = try_code_fence(trimmed) {
         out.push(Spanned { kind: tok, span });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
         return;
     }
 
@@ -327,6 +442,19 @@ fn classify_line(text: &str, span: Span, out: &mut Vec<Spanned>) {
         }
     }
 
+    // Indented code block: 4+ leading spaces or a leading tab
+    if text.starts_with("    ") || text.starts_with('\t') {
+        out.push(Spanned {
+            kind: Token::IndentedCodeLine,
+            span,
+        });
+        out.push(Spanned {
+            kind: Token::RawLine(text.to_string()),
+            span,
+        });
+        return;
+    }
+
     // Plain text — emit as RawLine for parser to inline-tokenize
     out.push(Spanned {
         kind: Token::Text(String::new()),
@@ -417,6 +545,36 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
             continue;
         }
 
+        // Image ![alt](url)
+        if ch == b'!'
+            && peek(bytes, i + 1) == Some(b'[')
+            && let Some((img_tok, end)) = try_image(text, i)
+        {
+            flush_text_token(&mut current_text, span, out);
+            out.push(Spanned {
+                kind: img_tok,
+                span,
+            });
+            i = end;
+            continue;
+        }
+
+        // Autolink <url> or <email>
+        if ch == b'<' {
+            if let Some((link_tok, end)) = try_autolink(text, i) {
+                flush_text_token(&mut current_text, span, out);
+                out.push(Spanned {
+                    kind: link_tok,
+                    span,
+                });
+                i = end;
+                continue;
+            }
+            current_text.push('<');
+            i += 1;
+            continue;
+        }
+
         // Footnote ref [^label]
         if ch == b'['
             && peek(bytes, i + 1) == Some(b'^')
@@ -431,17 +589,28 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
             continue;
         }
 
-        // Link [text](url ...)
-        if ch == b'['
-            && let Some((link_tok, end)) = try_link(text, i)
-        {
-            flush_text_token(&mut current_text, span, out);
-            out.push(Spanned {
-                kind: link_tok,
-                span,
-            });
-            i = end;
-            continue;
+        // Link [text](url ...) or reference link [text][label] / [label]
+        if ch == b'[' {
+            // Try inline link first: [text](url)
+            if let Some((link_tok, end)) = try_link(text, i) {
+                flush_text_token(&mut current_text, span, out);
+                out.push(Spanned {
+                    kind: link_tok,
+                    span,
+                });
+                i = end;
+                continue;
+            }
+            // Try reference link: [text][label] or [label]
+            if let Some((ref_tok, end)) = try_link_ref(text, i) {
+                flush_text_token(&mut current_text, span, out);
+                out.push(Spanned {
+                    kind: ref_tok,
+                    span,
+                });
+                i = end;
+                continue;
+            }
         }
 
         // Tag
@@ -463,11 +632,45 @@ fn tokenize_inline_into(text: &str, span: Span, out: &mut Vec<Spanned>) {
             continue;
         }
 
-        current_text.push(ch as char);
-        i += 1;
+        // Default: push the character as text.
+        // For ASCII bytes this is trivial. For multi-byte UTF-8 sequences
+        // we must decode the full character rather than pushing each byte
+        // as a separate Latin-1 codepoint.
+        if ch < 0x80 {
+            current_text.push(ch as char);
+            i += 1;
+        } else {
+            // Determine UTF-8 sequence length from the leading byte and
+            // push the whole character at once.
+            let char_len = utf8_char_len(ch);
+            if i + char_len <= bytes.len() {
+                if let Ok(s) = std::str::from_utf8(&bytes[i..i + char_len]) {
+                    current_text.push_str(s);
+                } else {
+                    // Invalid UTF-8 — push replacement character
+                    current_text.push('\u{FFFD}');
+                }
+            } else {
+                current_text.push('\u{FFFD}');
+            }
+            i += char_len;
+        }
     }
 
     flush_text_token(&mut current_text, span, out);
+}
+
+/// Return the byte length of a UTF-8 character from its leading byte.
+fn utf8_char_len(lead: u8) -> usize {
+    if lead < 0x80 {
+        1
+    } else if lead < 0xE0 {
+        2
+    } else if lead < 0xF0 {
+        3
+    } else {
+        4
+    }
 }
 
 fn flush_text_token(buf: &mut String, span: Span, out: &mut Vec<Spanned>) {
@@ -484,6 +687,12 @@ fn flush_text_token(buf: &mut String, span: Span, out: &mut Vec<Spanned>) {
 // ===========================================================================
 
 fn try_heading(text: &str) -> Option<u8> {
+    // CommonMark: only 0-3 leading spaces allowed before ATX heading.
+    // 4+ spaces is an indented code block, not a heading.
+    let indent = text.len() - text.trim_start().len();
+    if indent >= 4 {
+        return None;
+    }
     let trimmed = text.trim_start();
     let hashes = trimmed.bytes().take_while(|&b| b == b'#').count();
     if (1..=6).contains(&hashes) {
@@ -532,6 +741,12 @@ fn try_html_line(trimmed: &str) -> Option<Token> {
         .collect();
     if tag_name.is_empty() {
         return None;
+    }
+    if !closing {
+        let after_name = &tag_start[tag_name.len()..];
+        if after_name.starts_with("://") || after_name.starts_with('@') {
+            return None;
+        }
     }
     if closing {
         Some(Token::HtmlClose { tag: tag_name })
@@ -605,6 +820,27 @@ fn try_footnote_def(trimmed: &str) -> Option<String> {
     Some(label.to_string())
 }
 
+/// Detect `[label]: url "optional title"` link reference definitions.
+/// Returns the label if this line is a link definition (the rest is in the RawLine).
+fn try_link_def(trimmed: &str) -> Option<String> {
+    let rest = trimmed.strip_prefix('[')?;
+    // Must not start with ^ (that's a footnote)
+    if rest.starts_with('^') {
+        return None;
+    }
+    let end = rest.find("]:")?;
+    let label = &rest[..end];
+    if label.is_empty() {
+        return None;
+    }
+    // After ]: there must be a space and then content
+    let after = &rest[end + 2..];
+    if after.is_empty() || (!after.starts_with(' ') && !after.starts_with('\t')) {
+        return None;
+    }
+    Some(label.to_string())
+}
+
 // ===========================================================================
 // Inline helpers
 // ===========================================================================
@@ -614,16 +850,43 @@ fn peek(bytes: &[u8], i: usize) -> Option<u8> {
 }
 
 fn scan_backtick_code(text: &str, start: usize) -> Option<(&str, usize)> {
-    let after = start + 1;
-    if after >= text.len() {
+    let bytes = text.as_bytes();
+    let mut n = 0;
+    while start + n < bytes.len() && bytes[start + n] == b'`' {
+        n += 1;
+    }
+    if n == 0 {
         return None;
     }
-    let end = text[after..].find('`')?;
-    let code = &text[after..after + end];
-    if code.is_empty() {
+    let content_start = start + n;
+    if content_start >= bytes.len() {
         return None;
     }
-    Some((code, after + end + 1))
+    let mut i = content_start;
+    while i < bytes.len() {
+        if bytes[i] == b'`' {
+            let run_start = i;
+            while i < bytes.len() && bytes[i] == b'`' {
+                i += 1;
+            }
+            if i - run_start == n {
+                let code = &text[content_start..run_start];
+                let stripped = if code.len() >= 2
+                    && code.starts_with(' ')
+                    && code.ends_with(' ')
+                    && !code.trim_matches(' ').is_empty()
+                {
+                    &code[1..code.len() - 1]
+                } else {
+                    code
+                };
+                return Some((stripped, i));
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
 }
 
 fn try_footnote_ref(text: &str, start: usize) -> Option<(String, usize)> {
@@ -638,6 +901,85 @@ fn try_footnote_ref(text: &str, start: usize) -> Option<(String, usize)> {
         return None;
     }
     Some((label.to_string(), start + 2 + end + 1))
+}
+
+/// Try to parse a reference link at `start`:
+///  - Full: `[display text][label]`
+///  - Collapsed: `[label][]`
+///  - Shortcut: `[label]` (not followed by `(` or `[`)
+fn try_link_ref(text: &str, start: usize) -> Option<(Token, usize)> {
+    let bytes = text.as_bytes();
+    if bytes.get(start).copied() != Some(b'[') {
+        return None;
+    }
+    // Don't match footnote refs [^...]
+    if bytes.get(start + 1).copied() == Some(b'^') {
+        return None;
+    }
+
+    // Find closing ] for the first bracket group
+    let mut pos = start + 1;
+    let mut depth = 1i32;
+    while pos < bytes.len() && depth > 0 {
+        if bytes[pos] == b'\\' && pos + 1 < bytes.len() {
+            pos += 2;
+            continue;
+        }
+        if bytes[pos] == b'[' {
+            depth += 1;
+        } else if bytes[pos] == b']' {
+            depth -= 1;
+        }
+        if depth > 0 {
+            pos += 1;
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    let first_text = &text[start + 1..pos];
+    if first_text.is_empty() {
+        return None;
+    }
+    let after_first = pos + 1;
+
+    // Full reference: [text][label]
+    if after_first < bytes.len() && bytes[after_first] == b'[' {
+        let label_start = after_first + 1;
+        if let Some(close) = text[label_start..].find(']') {
+            let label = &text[label_start..label_start + close];
+            if label.is_empty() {
+                // Collapsed: [label][]
+                return Some((
+                    Token::LinkRef {
+                        text: first_text.to_string(),
+                        label: first_text.to_string(),
+                    },
+                    label_start + close + 1,
+                ));
+            }
+            return Some((
+                Token::LinkRef {
+                    text: first_text.to_string(),
+                    label: label.to_string(),
+                },
+                label_start + close + 1,
+            ));
+        }
+    }
+
+    // Shortcut reference: [label] not followed by ( or [
+    if after_first >= bytes.len() || (bytes[after_first] != b'(' && bytes[after_first] != b'[') {
+        return Some((
+            Token::LinkRef {
+                text: first_text.to_string(),
+                label: first_text.to_string(),
+            },
+            after_first,
+        ));
+    }
+
+    None
 }
 
 fn try_link(text: &str, start: usize) -> Option<(Token, usize)> {
@@ -709,6 +1051,52 @@ fn try_link(text: &str, start: usize) -> Option<(Token, usize)> {
         },
         paren_close + 1,
     ))
+}
+
+fn try_autolink(text: &str, start: usize) -> Option<(Token, usize)> {
+    let rest = &text[start + 1..];
+    let end = rest.find('>')?;
+    let content = &rest[..end];
+    if content.is_empty()
+        || content.contains(' ')
+        || content.contains('\n')
+        || content.contains('<')
+    {
+        return None;
+    }
+    let is_uri = content.contains("://");
+    let is_email =
+        !is_uri && content.contains('@') && !content.starts_with('@') && !content.ends_with('@');
+    if !is_uri && !is_email {
+        return None;
+    }
+    let url = if is_email {
+        format!("mailto:{content}")
+    } else {
+        content.to_string()
+    };
+    Some((
+        Token::Link {
+            text: content.to_string(),
+            url,
+            title: None,
+            meta: None,
+        },
+        start + 1 + end + 1,
+    ))
+}
+
+fn try_image(text: &str, start: usize) -> Option<(Token, usize)> {
+    let (link_tok, end) = try_link(text, start + 1)?;
+    match link_tok {
+        Token::Link {
+            text: alt,
+            url,
+            title,
+            ..
+        } => Some((Token::Image { alt, url, title }, end)),
+        _ => None,
+    }
 }
 
 fn parse_link_paren(inner: &str) -> (String, Option<String>, Option<String>) {
@@ -951,5 +1339,192 @@ mod tests {
     fn test_inline_escaped_hash() {
         let tokens = inline_tokens(r"price \#100");
         assert!(matches!(&tokens[0], Token::Text(t) if t == "price #100"));
+    }
+
+    // Double-backtick code spans
+    #[test]
+    fn test_inline_double_backtick_code() {
+        let tokens = inline_tokens("use ``code with `backtick` inside`` here");
+        assert!(matches!(&tokens[0], Token::Text(t) if t == "use "));
+        assert!(matches!(&tokens[1], Token::InlineCode(c) if c == "code with `backtick` inside"));
+        assert!(matches!(&tokens[2], Token::Text(t) if t == " here"));
+    }
+    #[test]
+    fn test_inline_triple_backtick_code() {
+        let tokens = inline_tokens("``` `` ```");
+        assert!(matches!(&tokens[0], Token::InlineCode(c) if c == "``"));
+    }
+    #[test]
+    fn test_inline_backtick_space_stripping() {
+        let tokens = inline_tokens("`` `foo` ``");
+        assert!(matches!(&tokens[0], Token::InlineCode(c) if c == "`foo`"));
+    }
+    #[test]
+    fn test_inline_backtick_no_strip_all_spaces() {
+        let tokens = inline_tokens("``  ``");
+        assert!(matches!(&tokens[0], Token::InlineCode(c) if c == "  "));
+    }
+    // Autolinks
+    #[test]
+    fn test_inline_autolink_url() {
+        let tokens = inline_tokens("visit <https://example.com> now");
+        assert!(matches!(&tokens[0], Token::Text(t) if t == "visit "));
+        assert!(
+            matches!(&tokens[1], Token::Link { text, url, .. } if text == "https://example.com" && url == "https://example.com")
+        );
+        assert!(matches!(&tokens[2], Token::Text(t) if t == " now"));
+    }
+    #[test]
+    fn test_inline_autolink_email() {
+        let tokens = inline_tokens("email <user@example.com> please");
+        assert!(
+            matches!(&tokens[1], Token::Link { text, url, .. } if text == "user@example.com" && url == "mailto:user@example.com")
+        );
+    }
+    #[test]
+    fn test_html_tag_not_autolink() {
+        let tokens = inline_tokens("some <b>bold</b> text");
+        let has_link = tokens.iter().any(|t| matches!(t, Token::Link { .. }));
+        assert!(!has_link);
+    }
+    // Images
+    #[test]
+    fn test_inline_image() {
+        let tokens = inline_tokens("![alt text](image.png)");
+        assert!(
+            matches!(&tokens[0], Token::Image { alt, url, .. } if alt == "alt text" && url == "image.png")
+        );
+    }
+    #[test]
+    fn test_inline_image_with_title() {
+        let tokens = inline_tokens(r#"![photo](pic.jpg "My Photo")"#);
+        assert!(matches!(&tokens[0], Token::Image { alt, url, title, .. }
+            if alt == "photo" && url == "pic.jpg" && title.as_deref() == Some("My Photo")));
+    }
+
+    // Link reference definitions (block-level)
+    #[test]
+    fn test_block_link_def() {
+        let tokens = block_tokens("[foo]: /url");
+        assert!(matches!(&tokens[0], Token::LinkDefStart { label } if label == "foo"));
+        assert!(matches!(&tokens[1], Token::RawLine(_)));
+    }
+
+    #[test]
+    fn test_block_link_def_not_footnote() {
+        let tokens = block_tokens("[^note]: footnote");
+        assert!(matches!(&tokens[0], Token::FootnoteDefStart { label } if label == "note"));
+    }
+
+    // Link references (inline)
+    #[test]
+    fn test_inline_link_ref_shortcut() {
+        let tokens = inline_tokens("see [foo] here");
+        assert!(matches!(&tokens[0], Token::Text(t) if t == "see "));
+        assert!(
+            matches!(&tokens[1], Token::LinkRef { text, label } if text == "foo" && label == "foo")
+        );
+        assert!(matches!(&tokens[2], Token::Text(t) if t == " here"));
+    }
+
+    #[test]
+    fn test_inline_link_ref_full() {
+        let tokens = inline_tokens("[click here][foo]");
+        assert!(
+            matches!(&tokens[0], Token::LinkRef { text, label } if text == "click here" && label == "foo")
+        );
+    }
+
+    #[test]
+    fn test_inline_link_ref_collapsed() {
+        let tokens = inline_tokens("[foo][]");
+        assert!(
+            matches!(&tokens[0], Token::LinkRef { text, label } if text == "foo" && label == "foo")
+        );
+    }
+
+    #[test]
+    fn test_inline_link_preferred_over_ref() {
+        // [text](url) should be a Link, not a LinkRef
+        let tokens = inline_tokens("[foo](https://example.com)");
+        assert!(matches!(&tokens[0], Token::Link { text, .. } if text == "foo"));
+    }
+
+    // Setext headings (block-level lookahead)
+    #[test]
+    fn test_setext_h1() {
+        let tokens = block_tokens("Heading\n===");
+        assert!(matches!(&tokens[0], Token::Heading { level: 1 }));
+        assert!(matches!(&tokens[1], Token::RawLine(t) if t == "Heading"));
+    }
+
+    #[test]
+    fn test_setext_h2() {
+        let tokens = block_tokens("Heading\n---");
+        assert!(matches!(&tokens[0], Token::Heading { level: 2 }));
+        assert!(matches!(&tokens[1], Token::RawLine(t) if t == "Heading"));
+    }
+
+    #[test]
+    fn test_setext_single_char() {
+        let tokens = block_tokens("Heading\n=");
+        assert!(matches!(&tokens[0], Token::Heading { level: 1 }));
+    }
+
+    #[test]
+    fn test_setext_not_in_frontmatter() {
+        // Inside frontmatter, --- should close frontmatter, not create a setext heading
+        let tokens = block_tokens("---\ntitle: Test\n---");
+        assert!(matches!(&tokens[0], Token::FrontmatterDelim));
+        // title: Test should be raw content, not a heading
+        let has_heading = tokens.iter().any(|t| matches!(t, Token::Heading { .. }));
+        assert!(
+            !has_heading,
+            "should not produce heading inside frontmatter"
+        );
+    }
+
+    #[test]
+    fn test_setext_with_leading_spaces() {
+        let tokens = block_tokens("Heading\n   ===");
+        assert!(matches!(&tokens[0], Token::Heading { level: 1 }));
+    }
+
+    #[test]
+    fn test_setext_4_spaces_not_valid() {
+        // 4+ leading spaces on underline → not a setext heading
+        let tokens = block_tokens("Heading\n    ===");
+        let has_heading = tokens.iter().any(|t| matches!(t, Token::Heading { .. }));
+        assert!(
+            !has_heading,
+            "4-space indented underline should not be setext"
+        );
+    }
+
+    // Indented code blocks
+    #[test]
+    fn test_indented_code_line() {
+        let tokens = block_tokens("    code here");
+        assert!(matches!(&tokens[0], Token::IndentedCodeLine));
+        assert!(matches!(&tokens[1], Token::RawLine(t) if t == "    code here"));
+    }
+
+    #[test]
+    fn test_tab_indented_code_line() {
+        let tokens = block_tokens("\tcode here");
+        assert!(matches!(&tokens[0], Token::IndentedCodeLine));
+    }
+
+    #[test]
+    fn test_3_spaces_not_code() {
+        let tokens = block_tokens("   not code");
+        assert!(!tokens.iter().any(|t| matches!(t, Token::IndentedCodeLine)));
+    }
+
+    #[test]
+    fn test_4_spaces_before_heading_is_code_not_heading() {
+        let tokens = block_tokens("    # not a heading");
+        assert!(matches!(&tokens[0], Token::IndentedCodeLine));
+        assert!(!tokens.iter().any(|t| matches!(t, Token::Heading { .. })));
     }
 }

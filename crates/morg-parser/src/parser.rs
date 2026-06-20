@@ -34,12 +34,177 @@ pub fn parse_document(source: &str) -> ParseResult {
         }
     }
 
-    ParseResult {
-        document: Document {
-            frontmatter,
-            children,
-        },
-        errors,
+    let mut document = Document {
+        frontmatter,
+        children,
+        link_defs: HashMap::new(),
+    };
+
+    // --- Def-ref resolution pass ---
+    // Pass 1: collect link definitions into the symbol table.
+    resolve::collect_link_defs(&mut document);
+    // Pass 2: resolve LinkRef segments against the symbol table.
+    resolve::resolve_link_refs(&mut document);
+
+    ParseResult { document, errors }
+}
+
+// ===========================================================================
+// Def-ref resolution pass
+// ===========================================================================
+//
+// After the single-pass parse produces the raw AST, this module walks the
+// tree to build symbol tables and resolve references. The design is
+// intentionally generic: each "def-ref" feature (link definitions, future
+// cross-file id: references, etc.) adds a collect function and a resolve
+// function.
+//
+// **Collect** extracts definitions from the block tree into the document's
+// symbol tables.
+//
+// **Resolve** walks all inline content and replaces unresolved reference
+// nodes with their resolved equivalents.
+//
+// Adding a new def-ref feature:
+// 1. Add a symbol table field to `Document` (in ast.rs).
+// 2. Add a `collect_*` function here to populate it.
+// 3. Add a `resolve_*` function here to consume it.
+// 4. Call both from `parse_document` above.
+
+mod resolve {
+    use super::*;
+
+    /// Normalise a link label for case-insensitive matching.
+    /// CommonMark: labels are matched case-insensitively with
+    /// whitespace collapsed to single spaces.
+    fn normalise_label(label: &str) -> String {
+        label
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+
+    // --- Pass 1: collect definitions ---
+
+    pub fn collect_link_defs(doc: &mut Document) {
+        for block in &doc.children {
+            if let Block::LinkDefinition(def) = block {
+                let key = normalise_label(&def.label);
+                // First definition wins (CommonMark rule).
+                doc.link_defs.entry(key).or_insert_with(|| LinkTarget {
+                    url: def.url.clone(),
+                    title: def.title.clone(),
+                });
+            }
+            // Recurse into blocks that contain nested blocks.
+            collect_link_defs_in_block(block, &mut doc.link_defs);
+        }
+    }
+
+    fn collect_link_defs_in_block(block: &Block, defs: &mut HashMap<String, LinkTarget>) {
+        match block {
+            Block::Callout(c) => {
+                for child in &c.content {
+                    if let Block::LinkDefinition(def) = child {
+                        let key = normalise_label(&def.label);
+                        defs.entry(key).or_insert_with(|| LinkTarget {
+                            url: def.url.clone(),
+                            title: def.title.clone(),
+                        });
+                    }
+                    collect_link_defs_in_block(child, defs);
+                }
+            }
+            Block::List(l) => {
+                for item in &l.items {
+                    for child in &item.children {
+                        if let Block::LinkDefinition(def) = child {
+                            let key = normalise_label(&def.label);
+                            defs.entry(key).or_insert_with(|| LinkTarget {
+                                url: def.url.clone(),
+                                title: def.title.clone(),
+                            });
+                        }
+                        collect_link_defs_in_block(child, defs);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // --- Pass 2: resolve references ---
+
+    pub fn resolve_link_refs(doc: &mut Document) {
+        let defs = &doc.link_defs;
+        if defs.is_empty() {
+            return;
+        }
+        for block in &mut doc.children {
+            resolve_block(block, defs);
+        }
+    }
+
+    fn resolve_block(block: &mut Block, defs: &HashMap<String, LinkTarget>) {
+        match block {
+            Block::Heading(h) => resolve_inline(&mut h.content, defs),
+            Block::Paragraph(p) => resolve_inline(&mut p.content, defs),
+            Block::Table(t) => {
+                for cell in &mut t.headers {
+                    resolve_inline(cell, defs);
+                }
+                for row in &mut t.rows {
+                    for cell in row {
+                        resolve_inline(cell, defs);
+                    }
+                }
+            }
+            Block::Callout(c) => {
+                for child in &mut c.content {
+                    resolve_block(child, defs);
+                }
+            }
+            Block::List(l) => {
+                for item in &mut l.items {
+                    resolve_inline(&mut item.content, defs);
+                    if let Some(desc) = &mut item.description {
+                        resolve_inline(desc, defs);
+                    }
+                    for child in &mut item.children {
+                        resolve_block(child, defs);
+                    }
+                }
+            }
+            Block::FootnoteDefinition(f) => resolve_inline(&mut f.content, defs),
+            _ => {}
+        }
+    }
+
+    fn resolve_inline(content: &mut InlineContent, defs: &HashMap<String, LinkTarget>) {
+        for seg in &mut content.segments {
+            match seg {
+                InlineSegment::LinkRef { text, label } => {
+                    let key = normalise_label(label);
+                    if let Some(target) = defs.get(&key) {
+                        *seg = InlineSegment::Link(Link {
+                            text: text.clone(),
+                            url: target.url.clone(),
+                            title: target.title.clone(),
+                            tags: Vec::new(),
+                            attributes: HashMap::new(),
+                        });
+                    }
+                }
+                // Recurse into nested inline content.
+                InlineSegment::Bold(inner)
+                | InlineSegment::Italic(inner)
+                | InlineSegment::Strikethrough(inner) => {
+                    resolve_inline(inner, defs);
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -127,14 +292,12 @@ fn parse_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Option<Bloc
         Token::LineComment => Some(parse_line_comment(lex)),
         Token::BlockCommentOpen => Some(parse_block_comment(lex)),
         Token::FootnoteDefStart { .. } => Some(parse_footnote_def(lex)),
+        Token::LinkDefStart { .. } => Some(parse_link_def(lex)),
+        Token::IndentedCodeLine => Some(parse_indented_code_block(lex)),
         Token::FrontmatterDelim => {
-            // --- not at line 1 — treat as paragraph text
-            let span = lex.advance().span;
+            lex.advance();
             skip_newline(lex);
-            Some(Block::Paragraph(Paragraph {
-                content: InlineContent::plain("---"),
-                span,
-            }))
+            None
         }
         Token::Tag(_) | Token::UnknownTag { .. } => Some(parse_block_tag(lex)),
         Token::Text(_) | Token::RawLine(_) => parse_paragraph(lex),
@@ -163,9 +326,16 @@ fn parse_heading(lex: &mut Lexer<'_>, level: u8, errors: &mut Vec<ParseError>) -
     let raw = consume_raw_line(lex);
     skip_newline(lex);
 
+    // ATX headings start with `# `, `## `, etc. — strip the prefix.
+    // Setext headings have no prefix — the raw line is the full content.
     let text = raw.trim_start();
-    let content_start = text.find(' ').map(|i| i + 1).unwrap_or(text.len());
-    let content_text = &text[content_start..];
+    let is_atx = text.starts_with('#');
+    let content_text = if is_atx {
+        let content_start = text.find(' ').map(|i| i + 1).unwrap_or(text.len());
+        &text[content_start..]
+    } else {
+        text
+    };
     let content = build_inline_content(content_text, head_span);
 
     // Look ahead for property drawer
@@ -258,6 +428,8 @@ fn parse_code_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block 
         } => (*fence_char, *fence_len, String::new()),
         _ => unreachable!(),
     };
+    // Consume the RawLine that accompanies the fence token, then the Newline.
+    consume_raw_line(lex);
     skip_newline(lex);
     let info_str = &info_string;
 
@@ -282,6 +454,7 @@ fn parse_code_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block 
 
         if is_close {
             let close_span = lex.advance().span;
+            consume_raw_line(lex); // skip the RawLine accompanying the close fence
             skip_newline(lex);
             return Block::CodeBlock(CodeBlock {
                 lang,
@@ -303,6 +476,74 @@ fn parse_code_block(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Block 
         body: body_lines.join("\n"),
         span: open_span,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Indented code block
+// ---------------------------------------------------------------------------
+
+fn parse_indented_code_block(lex: &mut Lexer<'_>) -> Block {
+    let first_span = lex.peek().span;
+    let mut body_lines: Vec<String> = Vec::new();
+    let mut last_span = first_span;
+
+    // Collect IndentedCodeLine tokens, including intervening BlankLines
+    // that are followed by another IndentedCodeLine.
+    loop {
+        if matches!(lex.peek().kind, Token::IndentedCodeLine) {
+            last_span = lex.advance().span; // consume IndentedCodeLine
+            let raw = consume_raw_line(lex);
+            skip_newline(lex);
+            body_lines.push(strip_indent(&raw));
+        } else if matches!(lex.peek().kind, Token::BlankLine) {
+            // Peek ahead: if a BlankLine is followed (possibly after more
+            // BlankLines) by an IndentedCodeLine, include it in the block.
+            let saved = lex.position();
+            let mut pending_blanks: usize = 0;
+            while matches!(lex.peek().kind, Token::BlankLine) {
+                lex.advance();
+                skip_newline(lex);
+                pending_blanks += 1;
+            }
+            if matches!(lex.peek().kind, Token::IndentedCodeLine) {
+                // Keep going — add blank lines to the body
+                for _ in 0..pending_blanks {
+                    body_lines.push(String::new());
+                }
+            } else {
+                // Not followed by more code — roll back and stop
+                lex.set_position(saved);
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Strip trailing empty lines (CommonMark rule)
+    while body_lines.last().is_some_and(|l| l.is_empty()) {
+        body_lines.pop();
+    }
+
+    Block::CodeBlock(CodeBlock {
+        lang: None,
+        tags: Vec::new(),
+        attributes: HashMap::new(),
+        body: body_lines.join("\n"),
+        span: first_span.merge(last_span),
+    })
+}
+
+/// Strip the 4-space or 1-tab indent prefix from a code line.
+fn strip_indent(line: &str) -> String {
+    if let Some(rest) = line.strip_prefix('\t') {
+        rest.to_string()
+    } else if let Some(stripped) = line.strip_prefix("    ") {
+        stripped.to_string()
+    } else {
+        // Shouldn't happen for IndentedCodeLine, but be safe
+        line.to_string()
+    }
 }
 
 fn parse_code_info(info: &str, span: Span) -> (Option<String>, Vec<Tag>, HashMap<String, String>) {
@@ -791,6 +1032,73 @@ fn parse_footnote_def(lex: &mut Lexer<'_>) -> Block {
 }
 
 // ---------------------------------------------------------------------------
+// Link reference definition
+// ---------------------------------------------------------------------------
+
+fn parse_link_def(lex: &mut Lexer<'_>) -> Block {
+    let tok = lex.advance();
+    let span = tok.span;
+    let label = match &tok.kind {
+        Token::LinkDefStart { label } => label.clone(),
+        _ => unreachable!(),
+    };
+    let raw = consume_raw_line(lex);
+    skip_newline(lex);
+
+    // Raw line is `[label]: url "optional title"`
+    // Strip the `[label]: ` prefix to get `url "title"`
+    let prefix = format!("[{label}]: ");
+    let after_prefix = raw.trim().strip_prefix(&prefix).unwrap_or("");
+    let (url, title) = parse_link_def_destination(after_prefix);
+
+    Block::LinkDefinition(LinkDefinition {
+        label,
+        url,
+        title,
+        span,
+    })
+}
+
+/// Parse `url "optional title"` from a link reference definition.
+fn parse_link_def_destination(s: &str) -> (String, Option<String>) {
+    let s = s.trim();
+    // URL may be wrapped in angle brackets: <url>
+    if let Some(rest) = s.strip_prefix('<')
+        && let Some(end) = rest.find('>')
+    {
+        let url = &rest[..end];
+        let after = rest[end + 1..].trim();
+        let title = parse_link_def_title(after);
+        return (url.to_string(), title);
+    }
+    // URL extends to first whitespace
+    let url_end = s.find(|c: char| c.is_whitespace()).unwrap_or(s.len());
+    let url = &s[..url_end];
+    let after = s[url_end..].trim();
+    let title = parse_link_def_title(after);
+    (url.to_string(), title)
+}
+
+fn parse_link_def_title(s: &str) -> Option<String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // Title in double quotes, single quotes, or parentheses
+    let (_open, close) = if s.starts_with('"') {
+        ('"', '"')
+    } else if s.starts_with('\'') {
+        ('\'', '\'')
+    } else if s.starts_with('(') {
+        ('(', ')')
+    } else {
+        return None;
+    };
+    let inner = &s[1..];
+    inner.find(close).map(|end| inner[..end].to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Block tag
 // ---------------------------------------------------------------------------
 
@@ -832,6 +1140,7 @@ fn parse_paragraph(lex: &mut Lexer<'_>) -> Option<Block> {
         &lex.peek().kind,
         Token::Text(_)
             | Token::RawLine(_)
+            | Token::IndentedCodeLine  // indented code cannot interrupt a paragraph
             | Token::BlockquoteContinuation
             | Token::HtmlClose { .. }
             | Token::PropertiesOpen
@@ -850,8 +1159,64 @@ fn parse_paragraph(lex: &mut Lexer<'_>) -> Option<Block> {
     let full_text = text_lines.join("\n");
     let span = first_span.merge(last_span);
     let content = build_inline_content(&full_text, span);
+    let content = process_hard_breaks(content);
 
     Some(Block::Paragraph(Paragraph { content, span }))
+}
+
+// ---------------------------------------------------------------------------
+// Hard line breaks
+// ---------------------------------------------------------------------------
+
+fn process_hard_breaks(mut content: InlineContent) -> InlineContent {
+    let mut result = Vec::new();
+    for seg in content.segments.drain(..) {
+        match seg {
+            InlineSegment::Text(ref text) if text.contains('\n') => {
+                split_hard_breaks(text, &mut result);
+            }
+            other => result.push(other),
+        }
+    }
+    InlineContent { segments: result }
+}
+
+fn split_hard_breaks(text: &str, out: &mut Vec<InlineSegment>) {
+    let mut remaining = text;
+    while let Some(nl_pos) = remaining.find('\n') {
+        let before = &remaining[..nl_pos];
+        let after = &remaining[nl_pos + 1..];
+        let trimmed = before.trim_end_matches(' ');
+        let trailing_spaces = before.len() - trimmed.len();
+        let backslash_break = trimmed.ends_with('\\') && !trimmed.ends_with("\\\\");
+        if trailing_spaces >= 2 {
+            if !trimmed.is_empty() {
+                push_or_append_text(out, trimmed);
+            }
+            out.push(InlineSegment::HardBreak);
+        } else if backslash_break {
+            let without_backslash = &trimmed[..trimmed.len() - 1];
+            if !without_backslash.is_empty() {
+                push_or_append_text(out, without_backslash);
+            }
+            out.push(InlineSegment::HardBreak);
+        } else {
+            push_or_append_text(out, before);
+            push_or_append_text(out, "\n");
+        }
+        remaining = after;
+    }
+    if !remaining.is_empty() {
+        push_or_append_text(out, remaining);
+    }
+}
+
+fn push_or_append_text(out: &mut Vec<InlineSegment>, text: &str) {
+    if let Some(InlineSegment::Text(prev)) = out.last_mut() {
+        prev.push_str(text);
+    } else {
+        out.push(InlineSegment::Text(text.to_string()));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -899,6 +1264,14 @@ fn tokens_to_inline_content(tokens: &[crate::tokens::Spanned], base_span: Span) 
                 segments.push(InlineSegment::Strikethrough(inner));
                 i += inner_end + 1;
             }
+            Token::Image { alt, url, title } => {
+                segments.push(InlineSegment::Image(Image {
+                    alt: alt.clone(),
+                    url: url.clone(),
+                    title: title.clone(),
+                }));
+                i += 1;
+            }
             Token::Link {
                 text,
                 url,
@@ -920,6 +1293,13 @@ fn tokens_to_inline_content(tokens: &[crate::tokens::Spanned], base_span: Span) 
             }
             Token::FootnoteRef { label } => {
                 segments.push(InlineSegment::FootnoteRef(label.clone()));
+                i += 1;
+            }
+            Token::LinkRef { text, label } => {
+                segments.push(InlineSegment::LinkRef {
+                    text: text.clone(),
+                    label: label.clone(),
+                });
                 i += 1;
             }
             Token::Tag(kw) => {

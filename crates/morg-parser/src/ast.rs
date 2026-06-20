@@ -3,10 +3,42 @@ use std::collections::HashMap;
 use crate::span::Span;
 use crate::tags::Tag;
 
+// ===========================================================================
+// Document — top-level AST node
+// ===========================================================================
+
+/// The root of a parsed morg-mode document.
+///
+/// After parsing, [`Document::link_defs`] contains a symbol table mapping
+/// normalised link labels to their destinations. This is populated by a
+/// **def-ref resolution pass** that runs automatically at the end of
+/// [`parse_document`](crate::parser::parse_document):
+///
+/// 1. **Collect** — walk `children` and extract every
+///    [`Block::LinkDefinition`]. Insert each into `link_defs`.
+/// 2. **Resolve** — walk all inline content and convert every
+///    [`InlineSegment::LinkRef`] whose label matches an entry in
+///    `link_defs` into an [`InlineSegment::Link`].
+///
+/// This two-pass design (parse → resolve) keeps the parser itself
+/// single-pass and context-free while still supporting forward references.
+/// The same pattern can be reused for future def-ref features (e.g.
+/// cross-file `id:` references) by adding new symbol tables and
+/// resolution passes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
     pub frontmatter: Option<Frontmatter>,
     pub children: Vec<Block>,
+    /// Symbol table: normalised link label → (url, optional title).
+    /// Populated by the def-ref resolution pass after parsing.
+    pub link_defs: HashMap<String, LinkTarget>,
+}
+
+/// The resolved destination of a link reference definition.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkTarget {
+    pub url: String,
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +62,10 @@ pub enum Block {
     HorizontalRule(Span),
     Comment(Comment),
     FootnoteDefinition(FootnoteDefinition),
+    /// `[label]: url "title"` — link reference definition.
+    /// Consumed by the def-ref resolution pass to populate
+    /// [`Document::link_defs`]; not rendered in output.
+    LinkDefinition(LinkDefinition),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +78,15 @@ pub struct Comment {
 pub struct FootnoteDefinition {
     pub label: String,
     pub content: InlineContent,
+    pub span: Span,
+}
+
+/// A link reference definition: `[label]: url "optional title"`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkDefinition {
+    pub label: String,
+    pub url: String,
+    pub title: Option<String>,
     pub span: Span,
 }
 
@@ -178,6 +223,9 @@ fn plain_text_segments(segments: &[InlineSegment], out: &mut String) {
                 plain_text_segments(&inner.segments, out);
             }
             InlineSegment::Link(link) => out.push_str(&link.text),
+            InlineSegment::Image(img) => out.push_str(&img.alt),
+            InlineSegment::HardBreak => out.push('\n'),
+            InlineSegment::LinkRef { text, .. } => out.push_str(text),
             InlineSegment::FootnoteRef(label) => {
                 out.push_str("[^");
                 out.push_str(label);
@@ -201,7 +249,12 @@ fn collect_tags_from_segments<'a>(segments: &'a [InlineSegment], out: &mut Vec<&
                     out.push(t);
                 }
             }
-            InlineSegment::Text(_) | InlineSegment::Code(_) | InlineSegment::FootnoteRef(_) => {}
+            InlineSegment::Text(_)
+            | InlineSegment::Code(_)
+            | InlineSegment::FootnoteRef(_)
+            | InlineSegment::Image(_)
+            | InlineSegment::HardBreak
+            | InlineSegment::LinkRef { .. } => {}
         }
     }
 }
@@ -215,7 +268,27 @@ pub enum InlineSegment {
     Strikethrough(InlineContent),
     Code(String),
     Link(Link),
+    Image(Image),
+    HardBreak,
     FootnoteRef(String),
+    /// An unresolved link reference: `[text][label]` or `[label]`.
+    /// The def-ref resolution pass converts these to [`Link`] when
+    /// a matching [`LinkDefinition`] exists. Any that remain
+    /// unresolved after the pass are left as-is (rendered as plain
+    /// text by consumers).
+    LinkRef {
+        /// Display text. For shortcut refs (`[label]`), same as `label`.
+        text: String,
+        /// The normalised label used to look up [`Document::link_defs`].
+        label: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub alt: String,
+    pub url: String,
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

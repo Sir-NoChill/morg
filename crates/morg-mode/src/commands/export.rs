@@ -160,6 +160,10 @@ fn render_block(block: &Block, out: &mut String, footnotes: &mut Vec<(String, St
             render_inline(&fd.content, &mut content);
             footnotes.push((fd.label.clone(), content));
         }
+        Block::LinkDefinition(_) => {
+            // Link definitions are consumed by the resolution pass;
+            // they produce no visible output.
+        }
     }
 }
 
@@ -225,10 +229,30 @@ fn render_inline_segment(seg: &InlineSegment, out: &mut String) {
                 escape_html(&link.text),
             ));
         }
+        InlineSegment::Image(img) => {
+            let title_attr = img
+                .title
+                .as_deref()
+                .map(|t| format!(" title=\"{}\"", escape_html(t)))
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "<img src=\"{}\" alt=\"{}\"{}/>",
+                escape_html(&img.url),
+                escape_html(&img.alt),
+                title_attr,
+            ));
+        }
         InlineSegment::FootnoteRef(label) => {
             out.push_str(&format!(
                 "<sup><a id=\"fnref-{label}\" href=\"#fn-{label}\">{label}</a></sup>"
             ));
+        }
+        InlineSegment::HardBreak => {
+            out.push_str("<br />\n");
+        }
+        InlineSegment::LinkRef { text, .. } => {
+            // Unresolved reference — render as plain text
+            out.push_str(&escape_html(text));
         }
     }
 }
@@ -334,6 +358,23 @@ fn alignment_style(align: Alignment) -> &'static str {
     }
 }
 
+#[cfg(test)]
+pub fn render_document(doc: &morg_parser::Document) -> String {
+    let mut html = String::new();
+    let mut footnotes: Vec<(String, String)> = Vec::new();
+    render_blocks(&doc.children, &mut html, &mut footnotes);
+    if !footnotes.is_empty() {
+        html.push_str("<section class=\"footnotes\">\n<hr>\n<ol>\n");
+        for (label, content) in &footnotes {
+            html.push_str(&format!(
+                "<li id=\"fn-{label}\"><p>{content} <a href=\"#fnref-{label}\">↩</a></p></li>\n"
+            ));
+        }
+        html.push_str("</ol>\n</section>\n");
+    }
+    html
+}
+
 const CSS: &str = r#"
 body { max-width: 48em; margin: 2em auto; padding: 0 1em; font-family: system-ui, sans-serif; line-height: 1.6; color: #222; }
 h1, h2, h3, h4, h5, h6 { margin-top: 1.5em; }
@@ -366,3 +407,281 @@ input[type="checkbox"] { margin-right: 0.5em; }
 hr { border: none; border-top: 1px solid #ddd; margin: 2em 0; }
 del { color: #888; }
 "#;
+
+// ===========================================================================
+// Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use morg_parser::parse_document;
+
+    /// Parse markdown source and render to HTML fragment.
+    fn export(src: &str) -> String {
+        let result = parse_document(src);
+        assert!(
+            result.errors.is_empty(),
+            "parse errors: {:?}",
+            result.errors
+        );
+        render_document(&result.document)
+    }
+
+    // --- Link reference definitions: resolved links in export output ---
+
+    #[test]
+    fn export_link_ref_shortcut() {
+        let html = export("[foo]: /url\n\nSee [foo] for details.\n");
+        assert!(
+            html.contains(r#"<a href="/url">foo</a>"#),
+            "shortcut ref should render as <a>: {html}"
+        );
+    }
+
+    #[test]
+    fn export_link_ref_full() {
+        let html = export("[foo]: /url\n\n[click here][foo]\n");
+        assert!(
+            html.contains(r#"<a href="/url">click here</a>"#),
+            "full ref should render with display text: {html}"
+        );
+    }
+
+    #[test]
+    fn export_link_ref_collapsed() {
+        let html = export("[foo]: /url\n\n[foo][]\n");
+        assert!(
+            html.contains(r#"<a href="/url">foo</a>"#),
+            "collapsed ref should render as <a>: {html}"
+        );
+    }
+
+    #[test]
+    fn export_link_ref_with_title() {
+        let html = export("[foo]: /url \"My Title\"\n\n[foo]\n");
+        assert!(
+            html.contains(r#"title="My Title""#),
+            "title should appear in the anchor: {html}"
+        );
+        assert!(
+            html.contains(r#"href="/url""#),
+            "url should appear in the anchor: {html}"
+        );
+    }
+
+    #[test]
+    fn export_link_ref_unresolved_is_plain_text() {
+        let html = export("See [undefined] here.\n");
+        // Unresolved ref should NOT produce an <a> tag
+        assert!(
+            !html.contains("<a "),
+            "unresolved ref should not produce a link: {html}"
+        );
+        assert!(
+            html.contains("undefined"),
+            "unresolved ref text should appear: {html}"
+        );
+    }
+
+    #[test]
+    fn export_link_ref_case_insensitive() {
+        let html = export("[Foo]: /url\n\n[foo] and [FOO]\n");
+        let link_count = html.matches(r#"<a href="/url">"#).count();
+        assert_eq!(link_count, 2, "both case variants should resolve: {html}");
+    }
+
+    #[test]
+    fn export_link_def_produces_no_output() {
+        let html = export("[foo]: /url\n\nParagraph.\n");
+        // The definition itself should not render as visible text
+        assert!(
+            !html.contains("[foo]:"),
+            "link definition should not appear in output: {html}"
+        );
+        assert!(
+            !html.contains("/url</"),
+            "link definition URL should not appear as raw text: {html}"
+        );
+    }
+
+    #[test]
+    fn export_multiple_link_defs() {
+        let html = export("[a]: /a\n[b]: /b\n\nSee [a] and [b].\n");
+        assert!(html.contains(r#"<a href="/a">a</a>"#), "ref [a]: {html}");
+        assert!(html.contains(r#"<a href="/b">b</a>"#), "ref [b]: {html}");
+    }
+
+    #[test]
+    fn export_link_ref_in_heading() {
+        let html = export("[foo]: /url\n\n# See [foo]\n");
+        assert!(
+            html.contains(r#"<a href="/url">foo</a>"#),
+            "link ref in heading should resolve: {html}"
+        );
+        // Should be inside an <h1>
+        assert!(html.contains("<h1"), "heading should render: {html}");
+    }
+
+    #[test]
+    fn export_link_ref_in_list() {
+        let html = export("[foo]: /url\n\n- Item with [foo]\n");
+        assert!(
+            html.contains(r#"<a href="/url">foo</a>"#),
+            "link ref in list item should resolve: {html}"
+        );
+    }
+
+    #[test]
+    fn export_link_ref_in_bold() {
+        let html = export("[foo]: /url\n\n**bold [foo] text**\n");
+        assert!(
+            html.contains(r#"<a href="/url">foo</a>"#),
+            "link ref inside bold should resolve: {html}"
+        );
+    }
+
+    // --- Verify other inline elements still export correctly ---
+
+    #[test]
+    fn export_inline_link() {
+        let html = export("[click](https://example.com)\n");
+        assert!(html.contains(r#"<a href="https://example.com">click</a>"#));
+    }
+
+    #[test]
+    fn export_image() {
+        let html = export("![alt](img.png)\n");
+        assert!(html.contains(r#"<img src="img.png" alt="alt"/>"#));
+    }
+
+    #[test]
+    fn export_autolink() {
+        let html = export("<https://example.com>\n");
+        assert!(html.contains(r#"<a href="https://example.com">https://example.com</a>"#));
+    }
+
+    #[test]
+    fn export_hard_break() {
+        let html = export("line one  \nline two\n");
+        assert!(html.contains("<br />"), "hard break: {html}");
+    }
+
+    #[test]
+    fn export_image_with_title() {
+        let html = export("![photo](pic.jpg \"My Photo\")\n");
+        assert!(html.contains(r#"title="My Photo""#));
+        assert!(html.contains(r#"src="pic.jpg""#));
+    }
+
+    #[test]
+    fn export_code_span() {
+        let html = export("Use `println!` here\n");
+        assert!(html.contains("<code>println!</code>"));
+    }
+
+    #[test]
+    fn export_double_backtick_code() {
+        let html = export("Use ``code with `tick` inside`` here\n");
+        assert!(html.contains("<code>code with `tick` inside</code>"));
+    }
+
+    // --- Integration: full document with link refs ---
+
+    #[test]
+    fn export_full_document_with_link_refs() {
+        let src = r#"# Documentation
+
+[rust]: https://www.rust-lang.org "The Rust Language"
+[morg]: /morg
+
+This project is built with [rust]. See the [morg] docs.
+
+## Links
+
+- [Official site][rust]
+- [Our docs][morg]
+
+Check [rust][] for the latest release.
+"#;
+        let html = export(src);
+        // All three ref forms should resolve to the Rust URL
+        let rust_count = html.matches(r#"href="https://www.rust-lang.org""#).count();
+        assert!(
+            rust_count >= 3,
+            "all [rust] refs should resolve ({rust_count} found): {html}"
+        );
+        // Title should be present
+        assert!(
+            html.contains(r#"title="The Rust Language""#),
+            "title should propagate: {html}"
+        );
+        // morg refs should resolve
+        assert!(
+            html.matches(r#"href="/morg""#).count() >= 2,
+            "all [morg] refs should resolve: {html}"
+        );
+        // Link definitions should not appear as visible text
+        assert!(
+            !html.contains("[rust]:"),
+            "defs should be invisible: {html}"
+        );
+        assert!(
+            !html.contains("[morg]:"),
+            "defs should be invisible: {html}"
+        );
+    }
+
+    // --- Setext headings ---
+
+    #[test]
+    fn export_setext_h1() {
+        let html = export("My Title\n========\n");
+        assert!(html.contains("<h1"), "setext = should produce h1: {html}");
+        assert!(html.contains("My Title"), "heading text: {html}");
+    }
+
+    #[test]
+    fn export_setext_h2() {
+        let html = export("Subtitle\n--------\n");
+        assert!(html.contains("<h2"), "setext - should produce h2: {html}");
+        assert!(html.contains("Subtitle"), "heading text: {html}");
+    }
+
+    #[test]
+    fn export_setext_dashes_after_paragraph_is_h2() {
+        let html = export("Some text\n---\n");
+        assert!(
+            html.contains("<h2"),
+            "--- after text should be setext h2, not <hr>: {html}"
+        );
+        assert!(!html.contains("<hr"), "should not produce <hr>: {html}");
+    }
+
+    // --- Indented code blocks ---
+
+    #[test]
+    fn export_indented_code_block() {
+        let html = export("    code here\n");
+        assert!(
+            html.contains("<pre><code>"),
+            "should produce code block: {html}"
+        );
+        assert!(html.contains("code here"), "code content: {html}");
+    }
+
+    #[test]
+    fn export_indented_code_block_strips_indent() {
+        let html = export("    hello world\n");
+        // The 4-space indent should be stripped from the output
+        assert!(
+            html.contains("hello world"),
+            "indent should be stripped: {html}"
+        );
+        // Should NOT start with 4 spaces inside <code>
+        assert!(
+            !html.contains("<code>    "),
+            "prefix should not appear in output: {html}"
+        );
+    }
+}

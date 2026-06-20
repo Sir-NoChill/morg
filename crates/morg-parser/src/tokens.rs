@@ -130,6 +130,10 @@ pub enum Token {
     PropertiesClose,
     /// `[^label]: ` footnote definition start
     FootnoteDefStart { label: String },
+    /// A line indented by 4+ spaces or a tab (indented code block content)
+    IndentedCodeLine,
+    /// `[label]: url "title"` link reference definition
+    LinkDefStart { label: String },
     /// `//` single-line comment
     LineComment,
     /// `/*` block comment open
@@ -154,6 +158,12 @@ pub enum Token {
     StrikethroughDelim,
     /// `` ` `` backtick-delimited code span content
     InlineCode(String),
+    /// `![alt](url)` image
+    Image {
+        alt: String,
+        url: String,
+        title: Option<String>,
+    },
     /// `[text](url)` or `[text](url "title" [metadata])`
     Link {
         text: String,
@@ -163,6 +173,8 @@ pub enum Token {
     },
     /// `[^label]` footnote reference
     FootnoteRef { label: String },
+    /// `[text][label]` or `[label]` — unresolved link reference
+    LinkRef { text: String, label: String },
     /// `key=value` attribute
     Attribute { key: String, value: String },
     /// Tag argument text (after a tag, before the next tag)
@@ -201,6 +213,7 @@ impl Token {
                 | Token::LineComment
                 | Token::BlockCommentOpen
                 | Token::BlankLine
+                | Token::IndentedCodeLine
         )
     }
 }

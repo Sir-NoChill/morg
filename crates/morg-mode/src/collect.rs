@@ -341,7 +341,8 @@ fn walk_block_with_inheritance<'a>(
         | Block::HtmlBlock(_)
         | Block::HorizontalRule(_)
         | Block::Comment(_)
-        | Block::FootnoteDefinition(_) => {}
+        | Block::FootnoteDefinition(_)
+        | Block::LinkDefinition(_) => {}
     }
 }
 
