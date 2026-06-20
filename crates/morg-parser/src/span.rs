@@ -1,8 +1,17 @@
+/// Source location of a parsed node.
+///
+/// `start` and `end` are byte offsets into the original source string.
+/// `line` and `col` are 1-based and point to the opening character of the
+/// node, suitable for error messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
+    /// Inclusive byte offset of the first character.
     pub start: usize,
+    /// Exclusive byte offset past the last character.
     pub end: usize,
+    /// 1-based line number of `start`.
     pub line: u32,
+    /// 1-based column number of `start`.
     pub col: u32,
 }
 
