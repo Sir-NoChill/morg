@@ -1381,6 +1381,13 @@ fn extract_raw_line(lex: &mut Lexer<'_>) -> String {
                 raw = "---".to_string();
                 lex.advance();
             }
+            // `---`, `***`, `___` etc. inside a code block are lexed as HorizontalRule
+            // (no RawLine companion); reconstruct the literal text from the source span.
+            Token::HorizontalRule => {
+                let span = lex.peek().span;
+                raw = lex.source()[span.start..span.end].to_string();
+                lex.advance();
+            }
             _ => {
                 lex.advance();
             }

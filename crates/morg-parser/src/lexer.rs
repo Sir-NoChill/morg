@@ -98,6 +98,7 @@ fn tokenize_blocks(source: &str) -> Vec<Spanned> {
     let mut tokens = Vec::new();
     let mut byte_offset: usize = 0;
     let mut frontmatter_state = FrontmatterState::BeforeContent;
+    let mut fenced_code_depth: u32 = 0;
 
     let lines: Vec<&str> = source.split('\n').collect();
     let mut line_idx = 0;
@@ -109,12 +110,29 @@ fn tokenize_blocks(source: &str) -> Vec<Spanned> {
 
         classify_line(line_text, span, &mut tokens, &mut frontmatter_state);
 
+        // Track fenced code blocks so the setext lookahead is suppressed inside them.
+        if let Some(last_block) = tokens.iter().rev().find(|t| {
+            matches!(
+                t.kind,
+                Token::FencedCodeOpen { .. } | Token::FencedCodeClose { .. }
+            )
+        }) {
+            match last_block.kind {
+                Token::FencedCodeOpen { .. } => fenced_code_depth = 1,
+                Token::FencedCodeClose { .. } => fenced_code_depth = 0,
+                _ => {}
+            }
+        }
+
         // Setext heading lookahead: if the current line was classified as
         // plain text (Text + RawLine) and the next line is a setext underline
         // (contiguous `=` or `-`, optionally indented 0-3 spaces), rewrite
         // the Text token as a Heading and skip the underline line.
-        // Suppressed inside frontmatter where lines are raw YAML.
-        if line_idx + 1 < lines.len() && frontmatter_state == FrontmatterState::Done {
+        // Suppressed inside frontmatter and fenced code blocks.
+        if line_idx + 1 < lines.len()
+            && frontmatter_state == FrontmatterState::Done
+            && fenced_code_depth == 0
+        {
             let was_text_line = tokens.len() >= 2
                 && matches!(tokens[tokens.len() - 2].kind, Token::Text(_))
                 && matches!(tokens[tokens.len() - 1].kind, Token::RawLine(_));
