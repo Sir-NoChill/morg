@@ -183,8 +183,32 @@ fn expand_noweb_recursive(
     visited: &mut HashSet<String>,
 ) -> String {
     let mut result = String::with_capacity(text.len());
+    // Track the current heredoc end-marker; None means we are not inside a heredoc.
+    let mut heredoc_end: Option<String> = None;
 
     for line in text.lines() {
+        // If we are inside a shell heredoc, only check for the end marker.
+        if let Some(ref marker) = heredoc_end {
+            // The end marker is the delimiter stripped of optional leading tabs.
+            if line.trim() == marker.as_str() {
+                heredoc_end = None;
+            }
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        // Detect shell heredoc opening: `<<WORD` or `<<-WORD` anywhere on the line.
+        // We look for the *last* `<<` on the line that is followed by an identifier,
+        // which becomes the end-marker for the subsequent content.
+        if let Some(marker) = detect_heredoc_start(line) {
+            heredoc_end = Some(marker);
+            // Still emit the line verbatim; no noweb expansion on the opener line.
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
         // Check if the entire line (minus indent) is a noweb ref — use indent-preserving expansion
         if let Some((indent, ref_name)) = parse_noweb_ref(line) {
             if visited.contains(ref_name) {
@@ -231,6 +255,56 @@ fn expand_noweb_recursive(
     }
 
     result
+}
+
+/// Detect a shell heredoc opening on a line and return the end-marker string,
+/// or `None` if the line does not start a heredoc.
+///
+/// Handles `<<WORD`, `<<-WORD`, and quoted forms `<<"WORD"` / `<<'WORD'`.
+/// Does NOT match `<<WORD>>` (that is a noweb reference, handled separately).
+fn detect_heredoc_start(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'<' && bytes[i + 1] == b'<' {
+            let after = &line[i + 2..];
+            // Skip optional `-` (tab-stripping form).
+            let after = after.strip_prefix('-').unwrap_or(after);
+            // Skip optional opening quote.
+            let (after, quote) = if let Some(s) = after.strip_prefix('"') {
+                (s, Some('"'))
+            } else if let Some(s) = after.strip_prefix('\'') {
+                (s, Some('\''))
+            } else {
+                (after, None)
+            };
+            // Collect the marker identifier.
+            let marker: String = after
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if marker.is_empty() {
+                i += 1;
+                continue;
+            }
+            // Check the character after the marker to distinguish `<<NAME>>` (noweb, no heredoc)
+            // from `<<NAME` followed by whitespace/EOL/quote-close.
+            let rest = &after[marker.len()..];
+            let rest = if let Some(q) = quote {
+                rest.strip_prefix(q).unwrap_or(rest)
+            } else {
+                rest
+            };
+            // If the very next character is `>`, this is a noweb reference — not a heredoc.
+            if rest.starts_with('>') {
+                i += 1;
+                continue;
+            }
+            return Some(marker);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Expand `<<name>>` references that appear inline within a line.
@@ -412,5 +486,67 @@ mod tests {
             !content.ends_with('\n'),
             "default should have no trailing newline"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Issue: shell heredoc `<<WORD` must not be treated as a noweb reference
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_heredoc_content_not_expanded() {
+        // `<<content>>` inside a heredoc should remain literal.
+        let mut named = HashMap::new();
+        named.insert("content".to_string(), "EXPANDED".to_string());
+
+        let input = "cat <<EOF\n<<content>>\nEOF";
+        let result = expand_noweb(input, &named);
+        assert!(
+            result.contains("<<content>>"),
+            "heredoc body should not be noweb-expanded, got: {result:?}"
+        );
+        assert!(
+            !result.contains("EXPANDED"),
+            "noweb must not expand inside heredoc, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_heredoc_end_marker_restored() {
+        // After the heredoc closes, noweb expansion resumes normally.
+        let mut named = HashMap::new();
+        named.insert("value".to_string(), "42".to_string());
+
+        let input = "cat <<EOF\nliteral\nEOF\n<<value>>";
+        let result = expand_noweb(input, &named);
+        assert!(
+            result.contains("42"),
+            "noweb should expand after heredoc ends, got: {result:?}"
+        );
+        assert!(
+            result.contains("literal"),
+            "heredoc body should be preserved, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_noweb_ref_not_confused_with_heredoc() {
+        // `<<name>>` (with closing >>) must still be treated as a noweb reference
+        // and NOT as a heredoc opener.
+        let mut named = HashMap::new();
+        named.insert("greet".to_string(), "hello".to_string());
+
+        let input = "<<greet>>";
+        let result = expand_noweb(input, &named);
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_detect_heredoc_start() {
+        assert_eq!(detect_heredoc_start("cat <<EOF"), Some("EOF".to_string()));
+        assert_eq!(detect_heredoc_start("cat <<-EOF"), Some("EOF".to_string()));
+        // `<<name>>` is a noweb ref, not a heredoc
+        assert_eq!(detect_heredoc_start("<<greet>>"), None);
+        // Plain line — no heredoc
+        assert_eq!(detect_heredoc_start("echo hello"), None);
     }
 }
