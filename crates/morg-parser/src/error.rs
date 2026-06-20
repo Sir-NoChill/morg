@@ -2,13 +2,20 @@ use std::fmt;
 
 use crate::span::Span;
 
+/// A non-fatal diagnostic produced during parsing.
+///
+/// The parser always returns a complete [`crate::ast::Document`]; errors are
+/// collected separately and do not abort the parse. Callers can inspect
+/// `errors` to surface diagnostics to users while still rendering the tree.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub kind: ParseErrorKind,
     pub span: Span,
+    /// Human-readable description of what went wrong.
     pub message: String,
 }
 
+/// The category of a [`ParseError`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseErrorKind {
     UnclosedCodeFence,

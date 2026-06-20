@@ -41,19 +41,30 @@ pub struct LinkTarget {
     pub title: Option<String>,
 }
 
+/// YAML frontmatter block at the top of a document (`---` / `---`).
+///
+/// `raw` preserves the original text for round-trip output; `data` is the
+/// parsed value for programmatic access.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frontmatter {
+    /// Original YAML text, excluding the `---` delimiters.
     pub raw: String,
-    pub data: serde_yaml::Value,
+    pub data: serde_json::Value,
     pub span: Span,
 }
 
+/// A top-level document node.
+///
+/// Every morg-mode document is a flat sequence of `Block`s. Nesting only
+/// occurs inside [`Callout`] content and [`ListItem`] children.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Heading(Heading),
     Paragraph(Paragraph),
     CodeBlock(CodeBlock),
+    /// An empty line; carries its source position for round-trip fidelity.
     BlankLine(Span),
+    /// A standalone `#tag` on its own line (block-level tag).
     BlockTag(Tag),
     Callout(Callout),
     Table(Table),
@@ -68,12 +79,14 @@ pub enum Block {
     LinkDefinition(LinkDefinition),
 }
 
+/// An HTML comment (`<!-- ... -->`), preserved verbatim.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Comment {
     pub text: String,
     pub span: Span,
 }
 
+/// A footnote definition: `[^label]: content`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FootnoteDefinition {
     pub label: String,
@@ -90,35 +103,62 @@ pub struct LinkDefinition {
     pub span: Span,
 }
 
+/// An ATX heading (`# H1` through `###### H6`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Heading {
+    /// 1–6, matching the number of `#` characters.
     pub level: u8,
     pub content: InlineContent,
+    /// `#properties` / `#end` block immediately following the heading line.
     pub properties: Option<PropertyDrawer>,
     pub span: Span,
 }
 
+/// Key-value metadata attached to a heading via `#properties` / `#end`.
+///
+/// ```text
+/// ## My task
+/// #properties
+/// id: abc-123
+/// owner: alice
+/// #end
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertyDrawer {
     pub entries: HashMap<String, String>,
     pub span: Span,
 }
 
+/// One or more inline lines forming a prose paragraph.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paragraph {
     pub content: InlineContent,
     pub span: Span,
 }
 
+/// A fenced code block (` ``` ` or `~~~`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodeBlock {
+    /// Language identifier from the opening fence, e.g. `"rust"`.
     pub lang: Option<String>,
+    /// Tags on the opening fence line, e.g. `` ```rust #tangle file=out.rs ``.
     pub tags: Vec<Tag>,
+    /// Key-value attributes from the opening fence, e.g. `file=out.rs`.
     pub attributes: HashMap<String, String>,
+    /// Raw body text, preserving all whitespace including the trailing newline.
     pub body: String,
     pub span: Span,
 }
 
+/// A GitHub-style callout / admonition block.
+///
+/// ```text
+/// > [!NOTE]
+/// > This is a note.
+/// ```
+///
+/// `kind` is the bracketed identifier (`NOTE`, `WARNING`, etc.).
+/// `content` contains the parsed body as nested [`Block`]s.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Callout {
     pub kind: String,
@@ -128,6 +168,7 @@ pub struct Callout {
     pub span: Span,
 }
 
+/// A GFM pipe table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Table {
     pub headers: Vec<InlineContent>,
@@ -136,20 +177,24 @@ pub struct Table {
     pub span: Span,
 }
 
+/// Column alignment from the separator row of a GFM table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alignment {
     Left,
     Center,
     Right,
+    /// No alignment specifier — use the renderer's default.
     None,
 }
 
+/// A raw HTML block, preserved verbatim and not parsed for inline content.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HtmlBlock {
     pub raw: String,
     pub span: Span,
 }
 
+/// An ordered or unordered list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct List {
     pub kind: ListKind,
@@ -157,28 +202,41 @@ pub struct List {
     pub span: Span,
 }
 
+/// Whether a list uses `-`/`*`/`+` bullets or `1.`/`1)` numbering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     Unordered,
     Ordered,
 }
 
+/// A single item in a [`List`], optionally with a checkbox and nested children.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListItem {
+    /// GFM task-list checkbox (`[ ]` / `[x]`), if present.
     pub checkbox: Option<Checkbox>,
+    /// Inline content of the item's first line (after the bullet and checkbox).
     pub content: InlineContent,
+    /// Definition-list description (`  : description`), if present.
     pub description: Option<InlineContent>,
+    /// Nested blocks (sub-lists, paragraphs, etc.) indented under this item.
     pub children: Vec<Block>,
+    /// Indentation depth in spaces; used to reconstruct nesting.
     pub indent: usize,
     pub span: Span,
 }
 
+/// GFM task-list checkbox state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Checkbox {
     Unchecked,
     Checked,
 }
 
+/// A sequence of inline spans making up a line of text.
+///
+/// Inline content appears inside headings, paragraphs, list items, table
+/// cells, and callout bodies. Use [`InlineContent::tags`] to collect all
+/// `#tag` spans and [`InlineContent::plain_text`] to extract raw text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InlineContent {
     pub segments: Vec<InlineSegment>,
@@ -259,17 +317,26 @@ fn collect_tags_from_segments<'a>(segments: &'a [InlineSegment], out: &mut Vec<&
     }
 }
 
+/// One span within an [`InlineContent`] sequence.
 #[derive(Debug, Clone, PartialEq)]
 pub enum InlineSegment {
+    /// Plain text run with no markup.
     Text(String),
+    /// An inline `#tag`.
     Tag(Tag),
+    /// `**bold**` or `__bold__`.
     Bold(InlineContent),
+    /// `*italic*` or `_italic_`.
     Italic(InlineContent),
+    /// `~~strikethrough~~`.
     Strikethrough(InlineContent),
+    /// `` `inline code` ``.
     Code(String),
     Link(Link),
     Image(Image),
+    /// Two trailing spaces or `\` before a newline.
     HardBreak,
+    /// `[^label]` reference to a [`FootnoteDefinition`].
     FootnoteRef(String),
     /// An unresolved link reference: `[text][label]` or `[label]`.
     /// The def-ref resolution pass converts these to [`Link`] when
@@ -284,6 +351,7 @@ pub enum InlineSegment {
     },
 }
 
+/// `![alt](url "title")`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Image {
     pub alt: String,
@@ -291,6 +359,10 @@ pub struct Image {
     pub title: Option<String>,
 }
 
+/// `[text](url "title")`, after def-ref resolution.
+///
+/// Links may carry inline `#tag`s and key-value `attributes` parsed from
+/// the link text, e.g. `[Buy ticket #todo](https://example.com){priority=A}`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Link {
     pub text: String,

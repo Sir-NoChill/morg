@@ -4,7 +4,7 @@ A markdown-idiomatic replacement for Emacs org-mode, built in Rust.
 
 morg-mode extends standard markdown with a `#tag` system for metadata, time tracking, task management, literate programming, and personal knowledge management. It operates purely on source files and is designed for use with any editor.
 
-[![CI](https://github.com/YOUR_USER/morg-mode/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USER/morg-mode/actions/workflows/ci.yml)
+[![CI](https://github.com/Sir-NoChill/morg-mode/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-NoChill/morg-mode/actions/workflows/ci.yml)
 
 ## Features
 

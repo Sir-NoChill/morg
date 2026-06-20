@@ -91,22 +91,19 @@ pub fn file_tags(document: &Document) -> Vec<String> {
     let Some(ref fm) = document.frontmatter else {
         return Vec::new();
     };
-    match &fm.data {
-        serde_yaml::Value::Mapping(map) => {
-            let key = serde_yaml::Value::String("tags".to_string());
-            match map.get(&key) {
-                Some(serde_yaml::Value::Sequence(seq)) => seq
-                    .iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect(),
-                Some(serde_yaml::Value::String(s)) => s
-                    .split(',')
-                    .map(|t| t.trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .collect(),
-                _ => Vec::new(),
-            }
-        }
+    let Some(map) = fm.data.as_object() else {
+        return Vec::new();
+    };
+    match map.get("tags") {
+        Some(serde_json::Value::Array(seq)) => seq
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
+        Some(serde_json::Value::String(s)) => s
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -123,18 +120,16 @@ pub fn todo_sequences(document: &Document) -> Vec<TodoSequence> {
     let Some(ref fm) = document.frontmatter else {
         return Vec::new();
     };
-    let serde_yaml::Value::Mapping(map) = &fm.data else {
+    let Some(map) = fm.data.as_object() else {
         return Vec::new();
     };
-
-    let key = serde_yaml::Value::String("todo_sequences".to_string());
-    let Some(serde_yaml::Value::Sequence(seqs)) = map.get(&key) else {
+    let Some(serde_json::Value::Array(seqs)) = map.get("todo_sequences") else {
         return Vec::new();
     };
 
     seqs.iter()
         .filter_map(|seq| {
-            let serde_yaml::Value::Sequence(items) = seq else {
+            let serde_json::Value::Array(items) = seq else {
                 return None;
             };
             let mut states = Vec::new();

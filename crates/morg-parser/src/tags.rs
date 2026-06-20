@@ -2,69 +2,82 @@ use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::span::Span;
 
+/// A parsed `#tag` with its source location.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tag {
     pub kind: TagKind,
     pub span: Span,
 }
 
+/// The semantic content of a morg-mode tag.
+///
+/// All built-in tag names are case-insensitive at the syntax level and
+/// normalised to their canonical form during parsing. Unrecognised names
+/// become [`TagKind::Unknown`] and are round-tripped as-is.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TagKind {
-    Todo {
-        text: Option<String>,
-    },
-    Done {
-        text: Option<String>,
-    },
+    /// `#todo [text]` — marks a task as open. Optional text is a note.
+    Todo { text: Option<String> },
+    /// `#done [text]` — marks a task as complete.
+    Done { text: Option<String> },
+    /// `#deadline DATE [+repeater] [-warning]`
+    ///
+    /// `warning` is the number of days before the deadline at which the item
+    /// should start appearing in the agenda (e.g. `-3d` → `Some(3)`).
     Deadline {
         date: Timestamp,
         repeater: Option<Repeater>,
         warning: Option<u32>,
     },
+    /// `#scheduled DATE [+repeater] [-warning]`
     Scheduled {
         date: Timestamp,
         repeater: Option<Repeater>,
         warning: Option<u32>,
     },
+    /// `#date DATE [+repeater]` — a bare date annotation with no task meaning.
     Date {
         date: Timestamp,
         repeater: Option<Repeater>,
     },
+    /// `#event DATE[/END_DATE] [+repeater] [description]`
     Event {
         date: Timestamp,
+        /// Present when the event spans multiple days/times (`DATE/END`).
         end_date: Option<Timestamp>,
         repeater: Option<Repeater>,
         description: Option<String>,
     },
-    ClockIn {
-        datetime: NaiveDateTime,
-    },
-    ClockOut {
-        datetime: NaiveDateTime,
-    },
+    /// `#clock-in DATETIME` — starts a time-tracking interval.
+    ClockIn { datetime: NaiveDateTime },
+    /// `#clock-out DATETIME` — ends a time-tracking interval.
+    ClockOut { datetime: NaiveDateTime },
+    /// `#clock START/END` or `#clock DURATION` — a completed clock entry.
     Clock(ClockValue),
+    /// `#tangle` — marks a code block for extraction to a file.
     Tangle,
-    Priority {
-        level: PriorityLevel,
-    },
+    /// `#priority LEVEL` — task priority (`A`, `B`, `C`, or a custom letter).
+    Priority { level: PriorityLevel },
+    /// `#effort DURATION` — estimated time to complete a task.
     Effort {
+        /// Total minutes.
         minutes: u64,
     },
-    Closed {
-        datetime: NaiveDateTime,
-    },
+    /// `#closed DATETIME` — records when a task was marked done.
+    Closed { datetime: NaiveDateTime },
+    /// `#archive` — moves a heading to the archive file on the next run.
     Archive,
+    /// `#progress` — renders a progress bar over child checkboxes.
     Progress,
-    /// A custom TODO workflow state defined in frontmatter.
+    /// A workflow state defined in the document's `todo_sequences` frontmatter key.
     CustomState {
         name: String,
+        /// `true` when this state appears after the `|` separator in its sequence.
         is_done: bool,
         text: Option<String>,
     },
-    Unknown {
-        name: String,
-        value: Option<String>,
-    },
+    /// Any `#name [value]` not matched by the built-in keyword list.
+    Unknown { name: String, value: Option<String> },
 }
 
 /// A timestamp that may be date-only or date+time.
@@ -96,6 +109,10 @@ impl std::fmt::Display for Timestamp {
     }
 }
 
+/// Task priority level.
+///
+/// `A > B > C > Custom(…)` in the [`Ord`] ordering, matching typical
+/// org-mode conventions where A is highest priority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PriorityLevel {
     A,
@@ -115,12 +132,14 @@ impl std::fmt::Display for PriorityLevel {
     }
 }
 
+/// A recurrence interval attached to a date tag (`+2w`, `+1m`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Repeater {
     pub interval: u32,
     pub unit: RepeaterUnit,
 }
 
+/// The time unit of a [`Repeater`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepeaterUnit {
     Day,
@@ -141,13 +160,17 @@ impl Repeater {
     }
 }
 
+/// The value carried by a `#clock` tag.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClockValue {
+    /// A completed interval: `#clock 2026-04-03T09:00/2026-04-03T10:30`.
     Range {
         start: NaiveDateTime,
         end: NaiveDateTime,
     },
+    /// A pre-summed duration: `#clock 1h30m`.
     Duration {
+        /// Total minutes.
         minutes: u64,
     },
 }

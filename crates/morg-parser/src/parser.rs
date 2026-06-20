@@ -241,8 +241,12 @@ fn parse_frontmatter(lex: &mut Lexer<'_>, errors: &mut Vec<ParseError>) -> Optio
             let raw = yaml_lines.join("\n");
             let span = open_span.merge(close_span);
 
-            match serde_yaml::from_str(&raw) {
-                Ok(data) => return Some(Frontmatter { raw, data, span }),
+            match serde_yaml::from_str::<serde_yaml::Value>(&raw) {
+                Ok(yaml_val) => {
+                    let data = serde_json::to_value(yaml_val)
+                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+                    return Some(Frontmatter { raw, data, span });
+                }
                 Err(e) => {
                     errors.push(ParseError {
                         kind: ParseErrorKind::InvalidYaml,
