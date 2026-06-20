@@ -1340,7 +1340,7 @@ fn frontmatter_with_yaml_types() {
         .document
         .frontmatter
         .expect("should have frontmatter");
-    assert!(fm.data.is_mapping());
+    assert!(fm.data.is_object());
 }
 
 #[test]

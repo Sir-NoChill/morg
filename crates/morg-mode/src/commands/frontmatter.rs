@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
-use serde_yaml::Value;
+use serde_json::Value;
 
 use crate::collect;
 
 pub fn run(paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
     let parsed = collect::parse_files(paths);
 
-    let mut merged = Value::Mapping(serde_yaml::Mapping::new());
+    let mut merged = Value::Object(serde_json::Map::new());
 
     let mut count = 0;
     for pf in &parsed {
@@ -31,7 +31,7 @@ pub fn run(paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
 
 fn deep_merge(base: &mut Value, overlay: &Value) {
     match (base, overlay) {
-        (Value::Mapping(base_map), Value::Mapping(overlay_map)) => {
+        (Value::Object(base_map), Value::Object(overlay_map)) => {
             for (key, overlay_val) in overlay_map {
                 if let Some(base_val) = base_map.get_mut(key) {
                     deep_merge(base_val, overlay_val);
@@ -40,7 +40,7 @@ fn deep_merge(base: &mut Value, overlay: &Value) {
                 }
             }
         }
-        (Value::Sequence(base_seq), Value::Sequence(overlay_seq)) => {
+        (Value::Array(base_seq), Value::Array(overlay_seq)) => {
             base_seq.extend(overlay_seq.iter().cloned());
         }
         (base, overlay) => {
@@ -53,10 +53,15 @@ fn deep_merge(base: &mut Value, overlay: &Value) {
 mod tests {
     use super::*;
 
+    fn json(s: &str) -> Value {
+        let yaml_val: serde_yaml::Value = serde_yaml::from_str(s).unwrap();
+        serde_json::to_value(yaml_val).unwrap()
+    }
+
     #[test]
     fn test_deep_merge_maps() {
-        let mut base: Value = serde_yaml::from_str("a: 1\nb: 2").unwrap();
-        let overlay: Value = serde_yaml::from_str("b: 3\nc: 4").unwrap();
+        let mut base = json("a: 1\nb: 2");
+        let overlay = json("b: 3\nc: 4");
         deep_merge(&mut base, &overlay);
 
         assert_eq!(base["a"], Value::Number(1.into()));
@@ -66,18 +71,18 @@ mod tests {
 
     #[test]
     fn test_deep_merge_sequences() {
-        let mut base: Value = serde_yaml::from_str("tags:\n  - a\n  - b").unwrap();
-        let overlay: Value = serde_yaml::from_str("tags:\n  - c").unwrap();
+        let mut base = json("tags:\n  - a\n  - b");
+        let overlay = json("tags:\n  - c");
         deep_merge(&mut base, &overlay);
 
-        let tags = base["tags"].as_sequence().unwrap();
+        let tags = base["tags"].as_array().unwrap();
         assert_eq!(tags.len(), 3);
     }
 
     #[test]
     fn test_deep_merge_nested() {
-        let mut base: Value = serde_yaml::from_str("meta:\n  author: Alice\n  version: 1").unwrap();
-        let overlay: Value = serde_yaml::from_str("meta:\n  version: 2\n  license: MIT").unwrap();
+        let mut base = json("meta:\n  author: Alice\n  version: 1");
+        let overlay = json("meta:\n  version: 2\n  license: MIT");
         deep_merge(&mut base, &overlay);
 
         assert_eq!(base["meta"]["author"], Value::String("Alice".into()));

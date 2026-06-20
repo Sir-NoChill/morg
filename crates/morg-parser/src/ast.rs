@@ -49,7 +49,7 @@ pub struct LinkTarget {
 pub struct Frontmatter {
     /// Original YAML text, excluding the `---` delimiters.
     pub raw: String,
-    pub data: serde_yaml::Value,
+    pub data: serde_json::Value,
     pub span: Span,
 }
 
